@@ -115,7 +115,7 @@ def download_file_with_resume(url, file_path):
                     if total_size > 0:
                         percent = (downloaded_bytes / total_size) * 100
                         print(f"\r{file_path} size:{total_size/1024/1024:.1f} MB {percent:.1f}%", end='', flush=True)
-            print('',end='\r')
+            print('',end='\n')
         
         shutil.move(temp_file_path, file_path)
         return True

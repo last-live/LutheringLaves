@@ -1,4 +1,5 @@
 import os
+import sys
 import shutil
 import hashlib
 import json
@@ -8,8 +9,7 @@ from pathlib import Path
 from urllib.request import urlopen, Request, HTTPError
 from urllib.parse import urljoin,quote
 
-game_patch_api = 'https://prod-cn-alicdn-gamestarter.kurogame.com/launcher/game/G152/10003_Y8xXrXk65DqFHEDgApn3cpK5lfczpFx5/index.json'
-
+launcher_api = 'https://prod-cn-alicdn-gamestarter.kurogame.com/launcher/game/G152/10003_Y8xXrXk65DqFHEDgApn3cpK5lfczpFx5/index.json'
 def get_result(url):
     try:
         req = Request(url, headers={
@@ -126,65 +126,104 @@ def download_file_with_resume(url, file_path, overwrite=False):
     except Exception as e:
         print(f"Download error: {str(e)}")
         return False
-   
+
 if __name__ == '__main__':
-    host = None
+    
+    work_type = 'install'
+    
+    args = sys.argv
+    if len(args) > 1:
+        if args[1] == '--install':
+            work_type = 'install'
+        if args[1] == '--update':
+            work_type = 'update'
     
     # create game folder
     wave_folder = Path("Wuthering Waves Game")
     if not wave_folder.exists():
         wave_folder.mkdir()
     
-    # get game patch info
-    patch_info = get_result(game_patch_api)
+    # get launcher info
+    launcher_info = get_result(launcher_api)
     
-    if not patch_info:
+    if not launcher_info:
         print("Failed to retrieve patch info")
         exit(1)
     
     # select best cdn node
-    if patch_info['default'].get('cdnList', None):
-        host = select_cdn(patch_info['default']['cdnList'])
-        if not host:
+    if launcher_info['default'].get('cdnList', None):
+        cdn_node = select_cdn(launcher_info['default']['cdnList'])
+        if not cdn_node:
             print('No available CDN node found.')
             exit(1)
-        print(f'Selected CDN node: {host}')
+        print(f'Selected CDN node: {cdn_node}')
     
-    # get game file list
-    indexFile_uri = patch_info['default']['config']['indexFile']
-    indexFile = get_result(urljoin(host, indexFile_uri))
+    # get last version game filelist
+    indexFile_uri = launcher_info['default']['config']['indexFile']
+    indexFile = get_result(urljoin(cdn_node, indexFile_uri))
     if not indexFile:
         print("Failed to retrieve index file")
         exit(1)
-    resourcesBasePath = patch_info['default']['resourcesBasePath']
+        
+    # download url middle path
+    resources_base_path = launcher_info['default']['resourcesBasePath']
+    
+    if not indexFile.get('resource', None):
+        print("No resource files found in index file")
+        exit(1)
     
     # download game client file
-    if indexFile.get('resource', None):
+    if work_type == 'install':
+        print('Start downloading game client files...')
         length = len(indexFile['resource'])
         print(f'Total resource files: {length}')
         for i, file in enumerate(indexFile['resource']):
-            download_url = urljoin(host, resourcesBasePath + "/" + file['dest'])
+            download_url = urljoin(cdn_node, resources_base_path + "/" + file['dest'])
             download_url = quote(download_url, safe=':/')
             file_path = wave_folder.joinpath(Path(file['dest']))
-            print(f"Downloading file {i+1}/{length}: {file['dest']}")
+            print(f"Downloading file {i+1}/{length}: {file_path}")
             download_file_with_resume(url=download_url, file_path=file_path)
+        
+        # verification file md5
+        for i, file in enumerate(indexFile['resource']):
+            
+            file_path = wave_folder.joinpath(Path(file['dest']))
+            current_md5 = get_file_md5(file_path)
+            
+            if current_md5 == file['md5']:
+                print(f'{file_path} - MD5 match')
+                continue
+
+            print(f'{file_path} - MD5 mismatch (expected: {file["md5"]}, got: {current_md5})')
+            download_url = urljoin(cdn_node, resources_base_path + "/" + file['dest'])
+            download_url = quote(download_url, safe=':/')
+            download_file_with_resume(url=download_url, file_path=file_path, overwrite=True)
+            
+            current_md5 = get_file_md5(file_path)
+            if current_md5 == file['md5']:
+                print(f'{file_path} - MD5 OK after re-download')
+            else:
+                print(f'{file_path} - Still MD5 mismatch after re-download')
     
-    # verification file md5
-    if indexFile.get('resource', None):
-        print("Starting MD5 verification...")
+    # update game client file
+    if work_type == 'update':
+        print('Starting update game client files...')
+        length = len(indexFile['resource'])
         for i, file in enumerate(indexFile['resource']):
             file_path = wave_folder.joinpath(Path(file['dest']))
             current_md5 = get_file_md5(file_path)
+            print(f"Updataing file {i+1}/{length}: {file_path}")
             if current_md5 == file['md5']:
-                print(f'{file_path} - MD5 OK')
+                print(f'{file_path} - MD5 match')
+                continue
+
+            print(f'{file_path} - MD5 mismatch (expected: {file["md5"]}, got: {current_md5})')
+            download_url = urljoin(cdn_node, resources_base_path + "/" + file['dest'])
+            download_url = quote(download_url, safe=':/')
+            download_file_with_resume(url=download_url, file_path=file_path, overwrite=True)
+            
+            current_md5 = get_file_md5(file_path)
+            if current_md5 == file['md5']:
+                print(f'{file_path} - MD5 OK after re-download')
             else:
-                print(f'{file_path} - MD5 mismatch (expected: {file["md5"]}, got: {current_md5})')
-                download_url = urljoin(host, resourcesBasePath + "/" + file['dest'])
-                download_url = quote(download_url, safe=':/')
-                download_file_with_resume(url=download_url, file_path=file_path, overwrite=True)
-                
-                current_md5 = get_file_md5(file_path)
-                if current_md5 == file['md5']:
-                    print(f'{file_path} - MD5 OK after re-download')
-                else:
-                    print(f'{file_path} - Still MD5 mismatch after re-download')
+                print(f'{file_path} - Still MD5 mismatch after re-download')

@@ -66,14 +66,18 @@ def get_file_md5(file_path):
         print(f"The file {file_path} does not exist.")
         return None
 
-def download_file_with_resume(url, file_path):
+def download_file_with_resume(url, file_path, overwrite=False):
     directory = file_path.parent
     if not directory.exists():
         os.makedirs(directory)
     
     if os.path.exists(file_path):
-        print(f'{file_path} already exists. Skipping download.')
-        return
+        if not overwrite:
+            print(f'{file_path} already exists. Skipping download.')
+            return
+        else:
+            os.remove(file_path)
+            print(f'{file_path} is deleted and start re-download.')
     
     temp_file_path = directory / f'{file_path.name}.temp'
     downloaded_bytes = 0
@@ -177,7 +181,7 @@ if __name__ == '__main__':
                 print(f'{file_path} - MD5 mismatch (expected: {file["md5"]}, got: {current_md5})')
                 download_url = urljoin(host, resourcesBasePath + "/" + file['dest'])
                 download_url = quote(download_url, safe=':/')
-                download_file_with_resume(url=download_url, file_path=file_path)
+                download_file_with_resume(url=download_url, file_path=file_path, overwrite=True)
                 
                 current_md5 = get_file_md5(file_path)
                 if current_md5 == file['md5']:

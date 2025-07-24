@@ -17,20 +17,20 @@ curl -sL https://gitee.com/tiz/LutheringLaves/raw/main/LutheringLaves.py -o Luth
 3.steam中找到该游戏，游戏属性里打开"强制使用特定 Steam Play 兼容工具"，选择一个Porton，建议是使用最新版本的GE-Proton。
 
 #### 更新游戏
-更新游戏时，需要设定工作模式为 update，请确保当前目录下有"Wuthering Waves.exe"文件，如需指定其它目录，可以指定参数 --folder
+更新游戏时，需要设定工作模式 --mode 为 update，请确保当前目录下有"Wuthering Waves.exe"文件，如需指定其它目录，可以指定参数 --folder
 ``` bash
-curl -sL https://raw.githubusercontent.com/last-live/LutheringLaves/main/LutheringLaves.py -o LutheringLaves.py && python3 LutheringLaves.py --worktype update
+curl -sL https://raw.githubusercontent.com/last-live/LutheringLaves/main/LutheringLaves.py -o LutheringLaves.py && python3 LutheringLaves.py --mode update
 ```
 
 国内镜像仓库，网络不好时使用镜像仓库的命令
 ``` bash
-curl -sL https://gitee.com/tiz/LutheringLaves/raw/main/LutheringLaves.py -o LutheringLaves.py && python3 LutheringLaves.py --worktype update
+curl -sL https://gitee.com/tiz/LutheringLaves/raw/main/LutheringLaves.py -o LutheringLaves.py && python3 LutheringLaves.py --mode update
 ```
 
 #### 设置下载目录
 设置启动参数--folder，可以指定下载目录，目前只支持相对路径，默认目录是'Wuthering Waves Game'
 ``` bash
-python3 LutheringLaves.py --worktype install --folder gamefolder
+python3 LutheringLaves.py --mode install --folder gamefolder
 ```
 
 ### 增量更新

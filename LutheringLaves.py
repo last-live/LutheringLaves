@@ -131,12 +131,12 @@ def download_file_with_resume(url, file_path, overwrite=False):
 if __name__ == '__main__':
     
     parser = argparse.ArgumentParser()
-    parser.add_argument('--worktype', default='install',help='install or update')
+    parser.add_argument('--mode', default='install',help='install or update')
     parser.add_argument('--folder', default='Wuthering Waves Game',help='set download folder')
     args = parser.parse_args()
     
     # create game folder
-    game_folder = Path(args.folder)
+    game_folder = Path(args.mode)
     if not game_folder.exists():
         game_folder.mkdir()
     
@@ -170,7 +170,7 @@ if __name__ == '__main__':
         exit(1)
     
     # download game client file
-    if args.worktype == 'install':
+    if args.mode == 'install':
         print('Start downloading game client files...')
         length = len(indexFile['resource'])
         print(f'Total resource files: {length}')
@@ -203,7 +203,7 @@ if __name__ == '__main__':
                 print(f'{file_path} - Still MD5 mismatch after re-download')
     
     # update game client file
-    if args.worktype == 'update':
+    if args.mode == 'update':
         print('Starting update game client files...')
         length = len(indexFile['resource'])
         for i, file in enumerate(indexFile['resource']):

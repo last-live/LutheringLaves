@@ -1,13 +1,15 @@
 ### LutheringLaves 介绍
 鸣潮国服客户端下载脚本，方便在SteamDeck下载鸣潮国服客户端，Linux其他发行版同样适用。
 
+镜像仓库：https://gitee.com/tiz/LutheringLaves
+
 #### 初次下载游戏
 1.运行以下命令后，会在当前目录下载'LutheringLaves.py'文件并创建'Wuthering Waves Game'文件夹，游戏文件会保存在'Wuthering Waves Game'文件夹下。
 ``` bash
 curl -sL https://raw.githubusercontent.com/last-live/LutheringLaves/main/LutheringLaves.py -o LutheringLaves.py && python3 LutheringLaves.py
 ```
 
-国内镜像仓库命令
+国内镜像仓库命令，网络不好用这个
 ``` bash
 curl -sL https://gitee.com/tiz/LutheringLaves/raw/main/LutheringLaves.py -o LutheringLaves.py && python3 LutheringLaves.py
 ```
@@ -22,7 +24,7 @@ curl -sL https://gitee.com/tiz/LutheringLaves/raw/main/LutheringLaves.py -o Luth
 curl -sL https://raw.githubusercontent.com/last-live/LutheringLaves/main/LutheringLaves.py -o LutheringLaves.py && python3 LutheringLaves.py --mode update
 ```
 
-国内镜像仓库，网络不好时使用镜像仓库的命令
+国内镜像仓库命令，网络不好用这个
 ``` bash
 curl -sL https://gitee.com/tiz/LutheringLaves/raw/main/LutheringLaves.py -o LutheringLaves.py && python3 LutheringLaves.py --mode update
 ```

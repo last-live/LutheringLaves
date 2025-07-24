@@ -8,6 +8,7 @@ import io
 from pathlib import Path
 from urllib.request import urlopen, Request, HTTPError
 from urllib.parse import urljoin,quote
+import argparse
 
 launcher_api = 'https://prod-cn-alicdn-gamestarter.kurogame.com/launcher/game/G152/10003_Y8xXrXk65DqFHEDgApn3cpK5lfczpFx5/index.json'
 def get_result(url):
@@ -129,19 +130,15 @@ def download_file_with_resume(url, file_path, overwrite=False):
 
 if __name__ == '__main__':
     
-    work_type = 'install'
-    
-    args = sys.argv
-    if len(args) > 1:
-        if args[1] == '--install':
-            work_type = 'install'
-        if args[1] == '--update':
-            work_type = 'update'
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--worktype', default='install',help='install or update')
+    parser.add_argument('--folder', default='Wuthering Waves Game',help='set download folder')
+    args = parser.parse_args()
     
     # create game folder
-    wave_folder = Path("Wuthering Waves Game")
-    if not wave_folder.exists():
-        wave_folder.mkdir()
+    game_folder = Path(args.folder)
+    if not game_folder.exists():
+        game_folder.mkdir()
     
     # get launcher info
     launcher_info = get_result(launcher_api)
@@ -173,21 +170,21 @@ if __name__ == '__main__':
         exit(1)
     
     # download game client file
-    if work_type == 'install':
+    if args.worktype == 'install':
         print('Start downloading game client files...')
         length = len(indexFile['resource'])
         print(f'Total resource files: {length}')
         for i, file in enumerate(indexFile['resource']):
             download_url = urljoin(cdn_node, resources_base_path + "/" + file['dest'])
             download_url = quote(download_url, safe=':/')
-            file_path = wave_folder.joinpath(Path(file['dest']))
+            file_path = game_folder.joinpath(Path(file['dest']))
             print(f"Downloading file {i+1}/{length}: {file_path}")
             download_file_with_resume(url=download_url, file_path=file_path)
         
         # verification file md5
         for i, file in enumerate(indexFile['resource']):
             
-            file_path = wave_folder.joinpath(Path(file['dest']))
+            file_path = game_folder.joinpath(Path(file['dest']))
             current_md5 = get_file_md5(file_path)
             
             if current_md5 == file['md5']:
@@ -206,11 +203,11 @@ if __name__ == '__main__':
                 print(f'{file_path} - Still MD5 mismatch after re-download')
     
     # update game client file
-    if work_type == 'update':
+    if args.worktype == 'update':
         print('Starting update game client files...')
         length = len(indexFile['resource'])
         for i, file in enumerate(indexFile['resource']):
-            file_path = wave_folder.joinpath(Path(file['dest']))
+            file_path = game_folder.joinpath(Path(file['dest']))
             current_md5 = get_file_md5(file_path)
             print(f"Updataing file {i+1}/{length}: {file_path}")
             if current_md5 == file['md5']:

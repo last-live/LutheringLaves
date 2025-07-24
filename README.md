@@ -6,6 +6,11 @@
 ``` bash
 curl -sL https://raw.githubusercontent.com/last-live/LutheringLaves/main/LutheringLaves.py -o LutheringLaves.py && python3 LutheringLaves.py
 ```
+
+国内镜像仓库，网络不好时使用镜像仓库的命令
+``` bash
+curl -sL https://gitee.com/tiz/LutheringLaves/raw/main/LutheringLaves.py -o LutheringLaves.py && python3 LutheringLaves.py
+```
 2.下载完成后，将游戏客户端文件将"Wuthering Waves.exe"添加到steam库里。
 
 3.steam中找到该游戏，游戏属性里打开"强制使用特定 Steam Play 兼容工具"，选择一个Porton，建议是使用最新版本的GE-Proton。

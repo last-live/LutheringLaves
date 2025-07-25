@@ -136,7 +136,7 @@ if __name__ == '__main__':
     args = parser.parse_args()
     
     # create game folder
-    game_folder = Path(args.mode)
+    game_folder = Path(args.folder)
     if not game_folder.exists():
         game_folder.mkdir()
     

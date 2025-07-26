@@ -67,6 +67,21 @@ def get_file_md5(file_path):
         print(f"The file {file_path} does not exist.")
         return None
 
+def get_localVersion(path):
+    file_path = path.joinpath(Path("launcherDownloadConfig.json"))
+    if not os.path.exists(file_path):
+        return None
+    with open(file_path, 'r', encoding='utf-8') as file:
+        data = json.load(file)
+        return data.get('version', None)
+        
+def update_localVersion(path, version):
+    temp = {"version":"2.4.1","reUseVersion":"","state":"","isPreDownload":False,"appId":"10003"}
+    temp['version'] = version
+    file_path = path.joinpath(Path("launcherDownloadConfig.json"))
+    with open(file_path, 'w', encoding='utf-8') as file:
+        json.dump(temp, file, ensure_ascii=False)
+
 def download_file_with_resume(url, file_path, overwrite=False):
     directory = file_path.parent
     if not directory.exists():
@@ -75,7 +90,7 @@ def download_file_with_resume(url, file_path, overwrite=False):
     if os.path.exists(file_path):
         if not overwrite:
             print(f'{file_path} already exists. Skipping download.')
-            return
+            return True
         else:
             os.remove(file_path)
             print(f'{file_path} is deleted and start re-download.')
@@ -128,10 +143,27 @@ def download_file_with_resume(url, file_path, overwrite=False):
         print(f"Download error: {str(e)}")
         return False
 
+def download_patch_tool():
+    if os.name == "nt":
+        tool_url = "https://gitee.com/tiz/LutheringLaves/blob/main/tools/hpatchz.exe"
+        file_name = Path("hpatchz.exe")
+    if os.name == "posix":
+        tool_url = "https://gitee.com/tiz/LutheringLaves/blob/main/tools/hpatchz"
+        file_name = Path("hpatchz")
+    return download_file_with_resume(tool_url, file_name)
+
+def run_hpatchz(patch_path, original_path, output_path):
+    if os.name == "nt":
+        cmd = f"hpatchz.exe {patch_path} {original_path} {output_path} -f"
+    if os.name == "posix":
+        tool_url = "https://gitee.com/tiz/LutheringLaves/blob/main/tools/hpatchz"
+        cmd = f"hpatchz.exe {patch_path} {original_path} {output_path} -f"
+    os.system(cmd)
+
 if __name__ == '__main__':
     
     parser = argparse.ArgumentParser()
-    parser.add_argument('--mode', default='install',help='install or update')
+    parser.add_argument('--mode', default='patch-update',help='install or update or patch-update')
     parser.add_argument('--folder', default='Wuthering Waves Game',help='set download folder')
     args = parser.parse_args()
     
@@ -224,3 +256,51 @@ if __name__ == '__main__':
                 print(f'{file_path} - MD5 OK after re-download')
             else:
                 print(f'{file_path} - Still MD5 mismatch after re-download')
+    
+    # Incremental updates
+    if args.mode == 'patch-update':
+        localVersion = get_localVersion(game_folder)
+        
+        if not localVersion:
+            print("Incremental updates are not supported.")
+            exit(1)
+        
+        patch_configs = launcher_info['default']['config']['patchConfig']
+        target_patch = list(filter(lambda x: x['version'] == localVersion, patch_configs))
+        
+        if len(target_patch) == 0:
+            print("Incremental updates are not supported.")
+            exit(1)
+        if len(target_patch[0]['ext']) == 0:
+            print("Incremental updates are not supported.")
+            exit(1)
+        
+        indexFile_uri = target_patch[0]['indexFile']
+        indexFile = get_result(urljoin(cdn_node, indexFile_uri))
+        
+        resources_base_path = target_patch[0]['baseUrl']
+        
+        krdiff_file_path = None
+        
+        for i, file in enumerate(indexFile['resource']):
+            length = len(indexFile['resource'])
+            if 'fromFolder' in file:
+                download_url = urljoin(cdn_node, file['fromFolder'] + "/" + file['dest'])
+                download_url = quote(download_url, safe=':/')
+                file_path = game_folder.joinpath(Path(file['dest']))
+                print(f"Downloading file {i+1}/{length}: {file_path}")
+                download_file_with_resume(url=download_url, file_path=file_path)
+                continue
+            
+            download_url = urljoin(cdn_node,  resources_base_path + "/" + file['dest'])
+            download_url = quote(download_url, safe=':/')
+            file_path = Path(file['dest'])
+            krdiff_file = file_path
+            print(f"Downloading file {i+1}/{length}: {file_path}")
+            download_file_with_resume(url=download_url, file_path=file_path)
+            
+        if not download_patch_tool():
+            print("Failed to download patch tool")
+            exit(1)
+        
+        

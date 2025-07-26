@@ -163,7 +163,7 @@ def run_hpatchz(patch_path, original_path, output_path):
 if __name__ == '__main__':
     
     parser = argparse.ArgumentParser()
-    parser.add_argument('--mode', default='patch-update',help='install or update or patch-update')
+    parser.add_argument('--mode', default='install',help='install or update or patch-update')
     parser.add_argument('--folder', default='Wuthering Waves Game',help='set download folder')
     args = parser.parse_args()
     

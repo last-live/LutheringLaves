@@ -76,8 +76,13 @@ def get_localVersion(path):
         return data.get('version', None)
         
 def update_localVersion(path, version):
-    temp = {"version":"2.4.1","reUseVersion":"","state":"","isPreDownload":False,"appId":"10003"}
-    temp['version'] = version
+    temp = {
+        "version":version,
+        "reUseVersion":"",
+        "state":"",
+        "isPreDownload":False,
+        "appId":"10003"
+    }
     file_path = path.joinpath(Path("launcherDownloadConfig.json"))
     with open(file_path, 'w', encoding='utf-8') as file:
         json.dump(temp, file, ensure_ascii=False)
@@ -142,22 +147,20 @@ def download_file_with_resume(url, file_path, overwrite=False):
     except Exception as e:
         print(f"Download error: {str(e)}")
         return False
-
 def download_patch_tool():
     if os.name == "nt":
-        tool_url = "https://gitee.com/tiz/LutheringLaves/blob/main/tools/hpatchz.exe"
+        tool_url = "https://gitee.com/tiz/LutheringLaves/raw/main/tools/hpatchz.exe"
         file_name = Path("hpatchz.exe")
     if os.name == "posix":
-        tool_url = "https://gitee.com/tiz/LutheringLaves/blob/main/tools/hpatchz"
+        tool_url = "https://gitee.com/tiz/LutheringLaves/raw/main/tools/hpatchz"
         file_name = Path("hpatchz")
     return download_file_with_resume(tool_url, file_name)
 
 def run_hpatchz(patch_path, original_path, output_path):
     if os.name == "nt":
-        cmd = f"hpatchz.exe {patch_path} {original_path} {output_path} -f"
+        cmd = f'.\hpatchz.exe "{original_path}" {patch_path} "{output_path}" -f'
     if os.name == "posix":
-        tool_url = "https://gitee.com/tiz/LutheringLaves/blob/main/tools/hpatchz"
-        cmd = f"hpatchz.exe {patch_path} {original_path} {output_path} -f"
+        cmd = f'hpatchz "{original_path}" {patch_path} "{output_path}" -f'
     os.system(cmd)
 
 if __name__ == '__main__':
@@ -169,6 +172,10 @@ if __name__ == '__main__':
     
     # create game folder
     game_folder = Path(args.folder)
+    if not game_folder.exists():
+        game_folder.mkdir()
+        
+    temp_folder = Path("temp_folder")
     if not game_folder.exists():
         game_folder.mkdir()
     
@@ -196,6 +203,8 @@ if __name__ == '__main__':
         
     # download url middle path
     resources_base_path = launcher_info['default']['resourcesBasePath']
+    
+    current_version = launcher_info['default']['version']
     
     if not indexFile.get('resource', None):
         print("No resource files found in index file")
@@ -233,6 +242,8 @@ if __name__ == '__main__':
                 print(f'{file_path} - MD5 OK after re-download')
             else:
                 print(f'{file_path} - Still MD5 mismatch after re-download')
+                
+        update_localVersion(game_folder, current_version)
     
     # update game client file
     if args.mode == 'update':
@@ -256,23 +267,26 @@ if __name__ == '__main__':
                 print(f'{file_path} - MD5 OK after re-download')
             else:
                 print(f'{file_path} - Still MD5 mismatch after re-download')
+                
+        update_localVersion(game_folder, current_version)
     
     # Incremental updates
     if args.mode == 'patch-update':
+        
         localVersion = get_localVersion(game_folder)
         
         if not localVersion:
-            print("Incremental updates are not supported.")
+            print("Incremental updates are not supported, unknown local version.")
             exit(1)
         
         patch_configs = launcher_info['default']['config']['patchConfig']
         target_patch = list(filter(lambda x: x['version'] == localVersion, patch_configs))
         
         if len(target_patch) == 0:
-            print("Incremental updates are not supported.")
+            print("Incremental updates are not supported, cannot find patch for local version.")
             exit(1)
         if len(target_patch[0]['ext']) == 0:
-            print("Incremental updates are not supported.")
+            print("Incremental updates are not supported, cannot find patch ext info.")
             exit(1)
         
         indexFile_uri = target_patch[0]['indexFile']
@@ -287,20 +301,37 @@ if __name__ == '__main__':
             if 'fromFolder' in file:
                 download_url = urljoin(cdn_node, file['fromFolder'] + "/" + file['dest'])
                 download_url = quote(download_url, safe=':/')
-                file_path = game_folder.joinpath(Path(file['dest']))
+                file_path = temp_folder.joinpath(Path(file['dest']))
                 print(f"Downloading file {i+1}/{length}: {file_path}")
                 download_file_with_resume(url=download_url, file_path=file_path)
                 continue
             
             download_url = urljoin(cdn_node,  resources_base_path + "/" + file['dest'])
             download_url = quote(download_url, safe=':/')
-            file_path = Path(file['dest'])
-            krdiff_file = file_path
-            print(f"Downloading file {i+1}/{length}: {file_path}")
-            download_file_with_resume(url=download_url, file_path=file_path)
+            krdiff_file_path = Path(file['dest'])
+            print(f"Downloading file {i+1}/{length}: {krdiff_file_path}")
+            download_file_with_resume(url=download_url, file_path=krdiff_file_path)
             
         if not download_patch_tool():
             print("Failed to download patch tool")
             exit(1)
         
-        
+        if krdiff_file_path:
+            
+            run_hpatchz(krdiff_file_path, game_folder, temp_folder)
+            
+            for item in temp_folder.rglob('*'):
+                relative_path = item.relative_to(temp_folder)
+                destination = game_folder / relative_path
+                
+                if destination.exists():
+                    if destination.is_file():
+                        destination.unlink()
+                    else:
+                        shutil.rmtree(str(destination))
+                
+                shutil.move(str(item), str(destination))
+                
+            shutil.rmtree(str(temp_folder))
+            krdiff_file_path.unlink()
+            update_localVersion(game_folder, current_version)

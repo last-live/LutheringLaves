@@ -154,13 +154,19 @@ def download_patch_tool():
     if os.name == "posix":
         tool_url = "https://gitee.com/tiz/LutheringLaves/raw/main/tools/hpatchz"
         file_name = Path("hpatchz")
-    return download_file_with_resume(tool_url, file_name)
+        
+    if not download_file_with_resume(tool_url, file_name): return False
+    
+    if os.name == "posix":
+        os.system(f"chmod +x {str(file_name)}")
+    
+    return True
 
 def run_hpatchz(patch_path, original_path, output_path):
     if os.name == "nt":
         cmd = f'.\hpatchz.exe "{original_path}" {patch_path} "{output_path}" -f'
     if os.name == "posix":
-        cmd = f'hpatchz "{original_path}" {patch_path} "{output_path}" -f'
+        cmd = f'./hpatchz "{original_path}" {patch_path} "{output_path}" -f'
     os.system(cmd)
 
 if __name__ == '__main__':

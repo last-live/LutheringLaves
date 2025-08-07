@@ -36,4 +36,7 @@ python3 LutheringLaves.py --mode install --folder gamefolder
 ```
 
 ### 增量更新
-官方启动器虽然已经支持文件增量更新，还没搞懂增量更新的接口怎么用，目前是只要有变动的文件就会全量更新，所以更新包的大小会比官方启动器的大很多。
+设置启动参数--mode为patch-update，可以使用增量更新下载，功能尚未完全测试通过，请谨慎使用。使用增量更新时，需要游戏目录下有launcherDownloadConfig.json文件且本地版本大于等于2.4.0。增量更新过程中，会产生临时文件，需要硬盘预留额外的控件，当前版本预计额外预留60g。
+``` bash
+python3 LutheringLaves.py --mode patch-update
+```

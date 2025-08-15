@@ -20,17 +20,17 @@ jobs:
       image: moonbuggy2000/nuitka:py3.13-debian 
 
     steps:
-    - name: checkout
+      - name: checkout
         uses: actions/checkout@v4
         with:
           repository: ${{ github.event.pull_request.head.repo.full_name }}
           ref: ${{ github.head_ref }}
 
-    - name: Install dependencies
-      run: |
-        python -m pip install --upgrade pip
-        if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
 
-    - name: Packing
-      run: |
-        python packing.py
+      - name: Packing
+        run: |
+          python packing.py

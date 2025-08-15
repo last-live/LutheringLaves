@@ -6,6 +6,7 @@ import json
 import gzip
 import io
 import argparse
+import ssl
 from enum import Enum
 from pathlib import Path
 from urllib.request import urlopen, Request, HTTPError
@@ -207,6 +208,11 @@ class Launcher:
                 'User-Agent': 'Mozilla/5.0',
                 'Accept-Encoding': 'gzip'
             })
+            
+            context = ssl.create_default_context()
+            context.check_hostname = False
+            context.verify_mode = ssl.CERT_NONE
+            
             with urlopen(req, timeout=10) as rsp:
                 if rsp.status != 200:
                     print(f"HTTP status {rsp.status} for {url}")

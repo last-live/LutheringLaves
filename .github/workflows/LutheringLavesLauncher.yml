@@ -17,7 +17,7 @@ jobs:
 
     runs-on: self-hosted
     container:
-      image: moonbuggy2000/nuitka:py3.13-debian 
+      image: ubuntu
 
     steps:
       - name: checkout
@@ -28,7 +28,6 @@ jobs:
 
       - name: Install dependencies
         run: |
-          apt install install patchelf
           python -m pip install --upgrade pip
           if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
 

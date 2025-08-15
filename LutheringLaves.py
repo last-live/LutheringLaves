@@ -5,330 +5,161 @@ import hashlib
 import json
 import gzip
 import io
+import argparse
+from enum import Enum
 from pathlib import Path
 from urllib.request import urlopen, Request, HTTPError
 from urllib.parse import urljoin,quote
-import argparse
 
-launcher_api = 'https://prod-cn-alicdn-gamestarter.kurogame.com/launcher/game/G152/10003_Y8xXrXk65DqFHEDgApn3cpK5lfczpFx5/index.json'
-def get_result(url):
-    try:
-        req = Request(url, headers={
-            'User-Agent': 'Mozilla/5.0',
-            'Accept-Encoding': 'gzip'
-        })
-        with urlopen(req, timeout=10) as rsp:
-            if rsp.status != 200:
-                print(f"HTTP status {rsp.status} for {url}")
-                return None
-            content_encoding = rsp.headers.get('Content-Encoding', '').lower()
-            data = rsp.read()
-            if 'gzip' in content_encoding:
-                try:
-                    with gzip.GzipFile(fileobj=io.BytesIO(data)) as f:
-                        data = f.read()
-                except Exception as e:
-                    print(f"Gzip decompression error: {str(e)}")
-                    return None
-            try:
-                return json.loads(data.decode('utf-8'))
-            except UnicodeDecodeError:
-                try:
-                    return json.loads(data.decode('gbk'))
-                except:
-                    print("Failed to decode JSON response")
-                    return None        
-    except HTTPError as e:
-        print(f"HTTP Error {e.code}: {e.reason}")
-        return None
-    except Exception as e:
-        print(f"Error fetching patch info: {str(e)}")
-        return None
+WW_LAUNCHER_API = 'https://prod-cn-alicdn-gamestarter.kurogame.com/launcher/game/G152/10003_Y8xXrXk65DqFHEDgApn3cpK5lfczpFx5/index.json'
 
-def select_cdn(cdnlist):
-    available_nodes = [node for node in cdnlist if node['K1'] == 1 and node['K2'] == 1]
-    if not available_nodes:
-        return None
-    
-    max_priority = max(node['P'] for node in available_nodes)
-    
-    for node in available_nodes:
-        if node['P'] == max_priority:
-            return node['url']
+class LauncherState(Enum):
+    STARTGAME = 0
+    NEEDINSTALL = 1
+    DOWNLOADING = 2
+    VALIDATING = 3
+    NEEDUPDATE = 4
+    UPDATING = 5
+    MARGEING = 6
 
-def get_file_md5(file_path):
-    md5_hash = hashlib.md5()
-    try:
-        with open(file_path, "rb") as file:
-            for chunk in iter(lambda: file.read(4096), b""):
-                md5_hash.update(chunk)
-        return md5_hash.hexdigest()
-    except FileNotFoundError:
-        print(f"The file {file_path} does not exist.")
-        return None
-
-def get_localVersion(path):
-    file_path = path.joinpath(Path("launcherDownloadConfig.json"))
-    if not os.path.exists(file_path):
-        return None
-    with open(file_path, 'r', encoding='utf-8') as file:
-        data = json.load(file)
-        return data.get('version', None)
+class ProgressInfo:
+    def __init__(self):
+        self.total_size = 0
+        self.finished_size = 0
+        self.total_count = 0
+        self.finished_count = 0
         
-def update_localVersion(path, version):
-    temp = {
-        "version":version,
-        "reUseVersion":"",
-        "state":"",
-        "isPreDownload":False,
-        "appId":"10003"
-    }
-    file_path = path.joinpath(Path("launcherDownloadConfig.json"))
-    with open(file_path, 'w', encoding='utf-8') as file:
-        json.dump(temp, file, ensure_ascii=False)
-
-def download_file_with_resume(url, file_path, overwrite=False):
-    directory = file_path.parent
-    if not directory.exists():
-        os.makedirs(directory)
+class Launcher:
     
-    if os.path.exists(file_path):
-        if not overwrite:
-            print(f'{file_path} already exists. Skipping download.')
-            return True
-        else:
-            os.remove(file_path)
-            print(f'{file_path} is deleted and start re-download.')
+    _instance = None
+    _initialized = False
     
-    temp_file_path = directory / f'{file_path.name}.temp'
-    downloaded_bytes = 0
-    if os.path.exists(temp_file_path):
-        downloaded_bytes = os.path.getsize(temp_file_path)
+    def __new__(cls, game_folder):
+        if cls._instance is None:
+            cls._instance = super(Launcher, cls).__new__(cls)
+        return cls._instance
     
-    headers = {'User-Agent': 'Mozilla/5.0'}
-    if downloaded_bytes > 0:
-        headers['Range'] = f'bytes={downloaded_bytes}-'
-    
-    try:
-        req = Request(url, headers=headers)
-        with urlopen(req, timeout=10) as rsp:
+    def __init__(self, game_folder):
+        if Launcher._initialized:
+            return
         
-            if rsp.status == 206:
-                content_length = rsp.headers.get('Content-Length')
-                if content_length:
-                    total_size = downloaded_bytes + int(content_length)
-                else:
-                    total_size = 0
-            elif rsp.status == 200:
-                content_length = rsp.headers.get('Content-Length')
-                total_size = int(content_length) if content_length else 0
-                if downloaded_bytes > 0:
-                    print("Server doesn't support resume, restarting download")
-                    downloaded_bytes = 0
-            else:
-                print(f"Unexpected HTTP status: {rsp.status}")
-                return False
+        self.launcher_api = WW_LAUNCHER_API
+        self.launcher_info = self.get_result(self.launcher_api)
+        
+        self.state = LauncherState.NEEDINSTALL
+        
+        self.cdn_node = self.select_cdn()
+        
+        # create game folder
+        self.game_folder_path = Path(game_folder)
+        if not self.game_folder_path.exists():
+            self.game_folder_path.mkdir()
             
-            mode = "ab" if downloaded_bytes > 0 else "wb"
-            with open(temp_file_path, mode) as file:
-                while True:
-                    chunk = rsp.read(1024 * 1024)
-                    if not chunk:
-                        break
-                    file.write(chunk)
-                    downloaded_bytes += len(chunk)
-                    if total_size > 0:
-                        percent = (downloaded_bytes / total_size) * 100
-                        print(f"\r{file_path} size:{total_size/1024/1024:.1f} MB {percent:.1f}%", end='', flush=True)
-            print('',end='\n')
+        self.temp_folder_path = None
         
-        shutil.move(temp_file_path, file_path)
-        return True
-    except Exception as e:
-        print(f"Download error: {str(e)}")
-        return False
-def download_patch_tool():
-    if os.name == "nt":
-        tool_url = "https://gitee.com/tiz/LutheringLaves/raw/main/tools/hpatchz.exe"
-        file_name = Path("hpatchz.exe")
-    if os.name == "posix":
-        tool_url = "https://gitee.com/tiz/LutheringLaves/raw/main/tools/hpatchz"
-        file_name = Path("hpatchz")
+        # get last version game filelist
+        self.gamefile_index = self.get_gamefile_index()
+            
+        # download url middle path
+        self.resources_base_path = self.launcher_info['default']['resourcesBasePath']
+        self.current_version = self.launcher_info['default']['version']
+        self.local_version = self.get_localVersion()
         
-    if not download_file_with_resume(tool_url, file_name): return False
-    
-    if os.name == "posix":
-        os.system(f"chmod +x {str(file_name)}")
-    
-    return True
-
-def run_hpatchz(patch_path, original_path, output_path):
-    if os.name == "nt":
-        cmd = f'.\hpatchz.exe "{original_path}" {patch_path} "{output_path}" -f'
-    if os.name == "posix":
-        cmd = f'./hpatchz "{original_path}" {patch_path} "{output_path}" -f'
-    os.system(cmd)
-
-if __name__ == '__main__':
-    
-    parser = argparse.ArgumentParser()
-    parser.add_argument('--mode', default='install',help='install or update or patch-update')
-    parser.add_argument('--folder', default='Wuthering Waves Game',help='set download folder')
-    args = parser.parse_args()
-    
-    # create game folder
-    game_folder = Path(args.folder)
-    if not game_folder.exists():
-        game_folder.mkdir()
+        self.download_game_progress = ProgressInfo()
+        self.verify_game_progress = ProgressInfo()
+        self.update_game_progress = ProgressInfo()
+        self.update_game_progress_patch = ProgressInfo()
         
-    temp_folder = Path("temp_folder")
-    if not game_folder.exists():
-        game_folder.mkdir()
-    
-    # get launcher info
-    launcher_info = get_result(launcher_api)
-    
-    if not launcher_info:
-        print("Failed to retrieve patch info")
-        exit(1)
-    
-    # select best cdn node
-    if launcher_info['default'].get('cdnList', None):
-        cdn_node = select_cdn(launcher_info['default']['cdnList'])
-        if not cdn_node:
-            print('No available CDN node found.')
-            exit(1)
-        print(f'Selected CDN node: {cdn_node}')
-    
-    # get last version game filelist
-    indexFile_uri = launcher_info['default']['config']['indexFile']
-    indexFile = get_result(urljoin(cdn_node, indexFile_uri))
-    if not indexFile:
-        print("Failed to retrieve index file")
-        exit(1)
+        self.support_incremental_patching = False
+        self.target_patch = None
+        self.gamefile_index_patch = None
+        self.resources_base_path_patch = None
+        self.krdiff_file_path = None
+        self.progress_callback = None
         
-    # download url middle path
-    resources_base_path = launcher_info['default']['resourcesBasePath']
+        self.init_incremental_update()
     
-    current_version = launcher_info['default']['version']
-    
-    if not indexFile.get('resource', None):
-        print("No resource files found in index file")
-        exit(1)
-    
-    # download game client file
-    if args.mode == 'install':
+    def get_gamefile_index(self):
+        
+        indexfile_uri = self.launcher_info['default']['config']['indexFile']
+        indexfile = self.get_result(urljoin(self.cdn_node, indexfile_uri))
+        
+        if not indexfile: return None
+        
+        return indexfile
+        
+    def download_game(self):
         print('Start downloading game client files...')
-        length = len(indexFile['resource'])
-        print(f'Total resource files: {length}')
-        for i, file in enumerate(indexFile['resource']):
-            download_url = urljoin(cdn_node, resources_base_path + "/" + file['dest'])
-            download_url = quote(download_url, safe=':/')
-            file_path = game_folder.joinpath(Path(file['dest']))
-            print(f"Downloading file {i+1}/{length}: {file_path}")
-            download_file_with_resume(url=download_url, file_path=file_path)
+        self.state = LauncherState.DOWNLOADING
+        resource_list = list(self.gamefile_index['resource'])
+        self.download_game_progress.total_count = len(resource_list)
+        for resource in resource_list:
+            self.download_game_progress.total_size += resource['size']
+            
+        length = self.download_game_progress.total_count
         
-        # verification file md5
-        for i, file in enumerate(indexFile['resource']):
-            
-            file_path = game_folder.joinpath(Path(file['dest']))
-            current_md5 = get_file_md5(file_path)
-            
-            if current_md5 == file['md5']:
-                print(f'{file_path} - MD5 match')
-                continue
+        print(f'Total resource files: {length}')
 
-            print(f'{file_path} - MD5 mismatch (expected: {file["md5"]}, got: {current_md5})')
-            download_url = urljoin(cdn_node, resources_base_path + "/" + file['dest'])
+        for file in resource_list:
+            download_url = urljoin(self.cdn_node, self.resources_base_path + "/" + file['dest'])
             download_url = quote(download_url, safe=':/')
-            download_file_with_resume(url=download_url, file_path=file_path, overwrite=True)
-            
-            current_md5 = get_file_md5(file_path)
-            if current_md5 == file['md5']:
-                print(f'{file_path} - MD5 OK after re-download')
-            else:
-                print(f'{file_path} - Still MD5 mismatch after re-download')
-                
-        update_localVersion(game_folder, current_version)
+            file_size = int(file['size'])
+            file_path = self.game_folder_path.joinpath(Path(file['dest']))
+            downloaded_count = self.download_game_progress.finished_count
+            print(f"Downloading file {downloaded_count + 1} / {length}: {file_path}")
+            self.download_file_with_resume(url=download_url, file_path=file_path, flag='download', file_size=file_size)
+            self.download_game_progress.finished_size += 1
     
-    # update game client file
-    if args.mode == 'update':
+    def update_game(self):
         print('Starting update game client files...')
-        length = len(indexFile['resource'])
-        for i, file in enumerate(indexFile['resource']):
-            file_path = game_folder.joinpath(Path(file['dest']))
-            current_md5 = get_file_md5(file_path)
+        length = len(self.gamefile_index['resource'])
+        for i, file in enumerate(self.gamefile_index['resource']):
+            file_path = self.game_folder_path.joinpath(Path(file['dest']))
+            current_md5 = self.get_file_md5(file_path)
             print(f"Updataing file {i+1}/{length}: {file_path}")
             if current_md5 == file['md5']:
-                print(f'{file_path} - MD5 match')
+                print(f'{file_path} MD5 match')
                 continue
 
-            print(f'{file_path} - MD5 mismatch (expected: {file["md5"]}, got: {current_md5})')
-            download_url = urljoin(cdn_node, resources_base_path + "/" + file['dest'])
+            print(f'{file_path} MD5 mismatch (expected: {file["md5"]}, got: {current_md5})')
+            download_url = urljoin(self.cdn_node, self.resources_base_path + "/" + file['dest'])
             download_url = quote(download_url, safe=':/')
-            download_file_with_resume(url=download_url, file_path=file_path, overwrite=True)
-            
-            current_md5 = get_file_md5(file_path)
-            if current_md5 == file['md5']:
-                print(f'{file_path} - MD5 OK after re-download')
-            else:
-                print(f'{file_path} - Still MD5 mismatch after re-download')
-                
-        update_localVersion(game_folder, current_version)
+            self.download_file_with_resume(url=download_url, file_path=file_path, overwrite=True)
+
+        self.update_localVersion()
     
-    # Incremental updates
-    if args.mode == 'patch-update':
+    def download_patch(self):
         
-        localVersion = get_localVersion(game_folder)
-        
-        if not localVersion:
-            print("Incremental updates are not supported, unknown local version.")
-            exit(1)
-        
-        patch_configs = launcher_info['default']['config']['patchConfig']
-        target_patch = list(filter(lambda x: x['version'] == localVersion, patch_configs))
-        
-        if len(target_patch) == 0:
-            print("Incremental updates are not supported, cannot find patch for local version.")
-            exit(1)
-        if len(target_patch[0]['ext']) == 0:
-            print("Incremental updates are not supported, cannot find patch ext info.")
-            exit(1)
-        
-        indexFile_uri = target_patch[0]['indexFile']
-        indexFile = get_result(urljoin(cdn_node, indexFile_uri))
-        
-        resources_base_path = target_patch[0]['baseUrl']
+        self.temp_folder_path = self.game_folder_path.parent / 'temp_folder'
+        if not self.temp_folder_path.exists():
+            self.temp_folder_path.mkdir()
         
         krdiff_file_path = None
         
-        for i, file in enumerate(indexFile['resource']):
-            length = len(indexFile['resource'])
+        for i, file in enumerate(self.gamefile_index_patch['resource']):
+            length = len(self.game_folder_path['resource'])
             if 'fromFolder' in file:
-                download_url = urljoin(cdn_node, file['fromFolder'] + "/" + file['dest'])
+                download_url = urljoin(self.cdn_node, file['fromFolder'] + "/" + file['dest'])
                 download_url = quote(download_url, safe=':/')
-                file_path = temp_folder.joinpath(Path(file['dest']))
+                file_path = self.temp_folder_path.joinpath(Path(file['dest']))
                 print(f"Downloading file {i+1}/{length}: {file_path}")
-                download_file_with_resume(url=download_url, file_path=file_path)
+                self.download_file_with_resume(url=download_url, file_path=file_path)
                 continue
             
-            download_url = urljoin(cdn_node,  resources_base_path + "/" + file['dest'])
+            download_url = urljoin(self.cdn_node,  self.resources_base_path_patch + "/" + file['dest'])
             download_url = quote(download_url, safe=':/')
             krdiff_file_path = Path(file['dest'])
             print(f"Downloading file {i+1}/{length}: {krdiff_file_path}")
-            download_file_with_resume(url=download_url, file_path=krdiff_file_path)
-            
-        if not download_patch_tool():
-            print("Failed to download patch tool")
-            exit(1)
+            self.download_file_with_resume(url=download_url, file_path=krdiff_file_path)
+    
+    def marge_patch(self):
         
-        if krdiff_file_path:
+        if self.krdiff_file_path:
+            self.run_hpatchz(self.krdiff_file_path, self.game_folder_path, self.temp_folder_path)
             
-            run_hpatchz(krdiff_file_path, game_folder, temp_folder)
-            
-            for item in temp_folder.rglob('*'):
-                relative_path = item.relative_to(temp_folder)
-                destination = game_folder / relative_path
+            for item in self.temp_folder_path.rglob('*'):
+                relative_path = item.relative_to(self.temp_folder_path)
+                destination = self.game_folder_path / relative_path
                 
                 if destination.exists():
                     if destination.is_file():
@@ -338,6 +169,283 @@ if __name__ == '__main__':
                 
                 shutil.move(str(item), str(destination))
                 
-            shutil.rmtree(str(temp_folder))
-            krdiff_file_path.unlink()
-            update_localVersion(game_folder, current_version)
+            shutil.rmtree(str(self.temp_folder_path))
+            self.krdiff_file_path.unlink()
+            self.update_localVersion()
+    
+    def verify_gamefile(self):
+        resource_list = list(self.gamefile_index['resource'])
+        for resource in resource_list:
+            self.verify_game_progress.total_size += resource['size']
+            
+        for file in resource_list:
+            file_path = self.game_folder_path.joinpath(Path(file['dest']))
+            
+            current_md5 = self.get_file_md5(file_path)
+
+            if current_md5 == file['md5']:
+                print(f'{file_path} MD5 match')
+                self.update_progress(flag='verify',value=int(file['size']))
+                continue
+            
+            print(f'{file_path} MD5 mismatch (expected: {file["md5"]}, got: {current_md5})')
+            download_url = urljoin(self.cdn_node, self.resources_base_path + "/" + file['dest'])
+            download_url = quote(download_url, safe=':/')
+            self.download_file_with_resume(url=download_url, file_path=file_path, overwrite=True)
+            
+            current_md5 = self.get_file_md5(file_path)
+            if current_md5 == file['md5']:
+                print(f'{file_path} MD5 OK after re-download')
+            else:
+                print(f'{file_path} Still MD5 mismatch after re-download')
+            self.update_progress(flag='verify',value=int(file['size']))
+
+    
+    def get_result(self, url):
+        try:
+            req = Request(url, headers={
+                'User-Agent': 'Mozilla/5.0',
+                'Accept-Encoding': 'gzip'
+            })
+            with urlopen(req, timeout=10) as rsp:
+                if rsp.status != 200:
+                    print(f"HTTP status {rsp.status} for {url}")
+                    return None
+                content_encoding = rsp.headers.get('Content-Encoding', '').lower()
+                data = rsp.read()
+                if 'gzip' in content_encoding:
+                    try:
+                        with gzip.GzipFile(fileobj=io.BytesIO(data)) as f:
+                            data = f.read()
+                    except Exception as e:
+                        print(f"Gzip decompression error: {str(e)}")
+                        return None
+                try:
+                    return json.loads(data.decode('utf-8'))
+                except UnicodeDecodeError:
+                    try:
+                        return json.loads(data.decode('gbk'))
+                    except:
+                        print("Failed to decode JSON response")
+                        return None        
+        except HTTPError as e:
+            print(f"HTTP Error {e.code}: {e.reason}")
+            return None
+        except Exception as e:
+            print(f"Error fetching patch info: {str(e)}")
+            return None
+    
+    def select_cdn(self):
+        cdnlist = self.launcher_info['default'].get('cdnList', None)
+        
+        if not cdnlist: return None
+        
+        available_nodes = [node for node in cdnlist if node['K1'] == 1 and node['K2'] == 1]
+        if not available_nodes:
+            return None
+        
+        max_priority = max(node['P'] for node in available_nodes)
+        
+        for node in available_nodes:
+            if node['P'] == max_priority:
+                return node['url']
+    
+    def get_localVersion(self):
+        file_path = self.game_folder_path / "launcherDownloadConfig.json"
+        if not os.path.exists(file_path):
+            return None
+        with open(file_path, 'r', encoding='utf-8') as file:
+            data = json.load(file)
+            return data.get('version', None)
+    
+    def update_localVersion(self):
+        new_version = self.current_version
+        temp = {
+            "version":new_version,
+            "reUseVersion":"",
+            "state":"",
+            "isPreDownload":False,
+            "appId":"10003"
+        }
+        file_path = self.game_folder_path / "launcherDownloadConfig.json"
+        with open(file_path, 'w', encoding='utf-8') as file:
+            json.dump(temp, file, ensure_ascii=False)
+    
+    def download_file_with_resume(self, url, file_path, overwrite=False, flag=None, file_size=None):
+        directory = file_path.parent
+        if not directory.exists():
+            os.makedirs(directory)
+        
+        if os.path.exists(file_path):
+            if not overwrite:
+                if file_size:
+                    self.update_progress(flag=flag, value=file_size)
+                print(f'{file_path} already exists. Skipping download.')
+                return True
+            else:
+                os.remove(file_path)
+                print(f'{file_path} is deleted and start re-download.')
+        
+        temp_file_path = directory / f'{file_path.name}.temp'
+        downloaded_bytes = 0
+        if os.path.exists(temp_file_path):
+            downloaded_bytes = os.path.getsize(temp_file_path)
+            
+        headers = {'User-Agent': 'Mozilla/5.0'}
+        if downloaded_bytes > 0:
+            headers['Range'] = f'bytes={downloaded_bytes}-'
+            
+        content_length = 0
+        
+        try:
+            req = Request(url, headers=headers)
+            with urlopen(req, timeout=10) as rsp:
+                if rsp.status == 206:
+                    content_length = int(rsp.headers.get('Content-Length'))
+                    total_size = downloaded_bytes + content_length
+                elif rsp.status == 200:
+                    content_length = int(rsp.headers.get('Content-Length'))
+                    total_size = content_length if content_length else 0
+                    if downloaded_bytes > 0:
+                        print("Server doesn't support resume, restarting download")
+                        downloaded_bytes = 0
+                else:
+                    print(f"Unexpected HTTP status: {rsp.status}")
+                    return False
+                
+                mode = "ab" if downloaded_bytes > 0 else "wb"
+                with open(temp_file_path, mode) as file:
+                    while True:
+                        chunk = rsp.read(1024 * 1024)
+                        if not chunk:
+                            break
+                        file.write(chunk)
+                        downloaded_bytes += len(chunk)
+                        self.update_progress(flag=flag, value=len(chunk))
+                        if total_size > 0:
+                            percent = (downloaded_bytes / total_size) * 100
+                            print(f"\r{file_path} size:{total_size/1024/1024:.1f} MB {percent:.1f}%", end='', flush=True)
+                print('',end='\n')
+            
+            shutil.move(temp_file_path, file_path)
+            return True
+        except Exception as e:
+            print(f"Download error: {str(e)}")
+            if e.code == 416 and downloaded_bytes == content_length:
+                if temp_file_path.exists(): 
+                    shutil.move(temp_file_path, file_path)
+            return False
+            
+    
+    def download_patch_tool(self):
+        
+        if os.name == "nt":
+            tool_url = "https://gitee.com/tiz/LutheringLaves/raw/main/tools/hpatchz.exe"
+            file_name = Path("tools") / "hpatchz.exe"
+        if os.name == "posix":
+            tool_url = "https://gitee.com/tiz/LutheringLaves/raw/main/tools/hpatchz"
+            file_name = Path("tools") / "hpatchz"
+            
+        if not self.download_file_with_resume(tool_url, file_name): return False
+        
+        if os.name == "posix":
+            os.system(f"chmod +x {str(file_name)}")
+        
+        return True
+    
+    def run_hpatchz(patch_path, original_path, output_path):
+        if os.name == "nt":
+            cmd = f'tools\hpatchz.exe "{original_path}" {patch_path} "{output_path}" -f'
+        if os.name == "posix":
+            cmd = f'tools/hpatchz "{original_path}" {patch_path} "{output_path}" -f'
+        os.system(cmd)
+
+    def is_support_incremental_patching(self):
+        if not self.local_version: return False
+        
+        patch_configs = self.launcher_info['default']['config']['patchConfig']
+        
+        target_patch = list(filter(lambda x: x['version'] == self.local_version, patch_configs))
+        
+        if len(target_patch) == 0: return False
+        
+        if len(target_patch[0]['ext']) == 0: return False
+    
+    def init_incremental_update(self):
+        if not self.download_patch_tool(): return
+        
+        if not self.local_version: return
+        
+        patch_configs = self.launcher_info['default']['config']['patchConfig']
+        
+        target_patch = list(filter(lambda x: x['version'] == self.local_version, patch_configs))
+        
+        if len(target_patch) == 0: return
+        
+        if len(target_patch[0]['ext']) == 0: return
+        
+        self.support_incremental_patching = True
+        self.target_patch = target_patch
+        self.resources_base_path_patch = self.target_patch[0]['baseUrl']
+        indexfile_uri = target_patch[0]['indexFile']
+        self.gamefile_index_patch = self.get_result(urljoin(self.cdn_node, indexfile_uri))
+    
+    def set_progress_callback(self, callback):
+        self.progress_callback = callback
+    
+    def update_progress(self, flag, value):
+        if flag == "download":
+            self.download_game_progress.finished_size += value
+        elif flag == "update":
+            self.update_game_progress.finished_size += value
+        elif flag == "verify":
+            self.verify_game_progress.finished_size += value
+        elif flag == "update_patch":
+            self.update_game_progress_patch.finished_size += value
+        
+        mutil_progress = {
+            "download": self.download_game_progress,
+            "verify": self.verify_game_progress,
+            "update": self.update_game_progress,
+            "update_patch": self.update_game_progress_patch,
+        }
+        
+        if self.progress_callback:
+            self.progress_callback(mutil_progress, flag) 
+
+    def get_file_md5(self, file_path):
+        md5_hash = hashlib.md5()
+        try:
+            with open(file_path, "rb") as file:
+                for chunk in iter(lambda: file.read(4096), b""):
+                    md5_hash.update(chunk)
+            return md5_hash.hexdigest()
+        except FileNotFoundError:
+            print(f"The file {file_path} does not exist.")
+            return None
+        
+if __name__ == '__main__':
+    
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--mode', default='install',help='install or update or patch-update')
+    parser.add_argument('--folder', default='Wuthering Waves Game',help='set download folder')
+    args = parser.parse_args()
+    
+    launcher = Launcher(game_folder=args.folder)
+    
+    # download game client file
+    if args.mode == 'install':
+        launcher.download_game()
+        launcher.verify_gamefile()
+        launcher.update_localVersion()  
+    
+    # update game client file
+    if args.mode == 'update':
+        launcher.update_game()
+        launcher.verify_gamefile()
+        launcher.update_localVersion()  
+    
+    # Incremental updates
+    if args.mode == 'patch-update':
+        launcher.download_patch()
+        launcher.marge_patch()

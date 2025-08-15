@@ -15,7 +15,9 @@ permissions:
 jobs:
   build:
 
-    runs-on: moonbuggy2000/nuitka:py3.13-debian
+    runs-on: self-hosted
+    container:
+      image: moonbuggy2000/nuitka:py3.13-debian 
 
     steps:
     - name: Install dependencies

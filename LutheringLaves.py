@@ -353,7 +353,8 @@ class Launcher:
         
         return True
     
-    def run_hpatchz(patch_path, original_path, output_path):
+    def run_hpatchz(self,patch_path, original_path, output_path):
+        self.download_patch_tool()
         if os.name == "nt":
             cmd = f'tools\hpatchz.exe "{original_path}" {patch_path} "{output_path}" -f'
         if os.name == "posix":
@@ -372,7 +373,6 @@ class Launcher:
         if len(target_patch[0]['ext']) == 0: return False
     
     def init_incremental_update(self):
-        if not self.download_patch_tool(): return
         
         if not self.local_version: return
         

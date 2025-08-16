@@ -1,5 +1,4 @@
 import os
-import sys
 import shutil
 import hashlib
 import json
@@ -10,6 +9,13 @@ from enum import Enum
 from pathlib import Path
 from urllib.request import urlopen, Request, HTTPError
 from urllib.parse import urljoin,quote
+
+# 适配 Nu
+import certifi
+os.environ["SSL_CERT_FILE"] = certifi.where()
+import sys
+base_dir = os.path.dirname(sys.argv[0])
+print(f"base dir: {base_dir}")
 
 WW_LAUNCHER_API = 'https://prod-cn-alicdn-gamestarter.kurogame.com/launcher/game/G152/10003_Y8xXrXk65DqFHEDgApn3cpK5lfczpFx5/index.json'
 
@@ -54,8 +60,10 @@ class Launcher:
         self.cdn_node = self.select_cdn()
         
         # create game folder
-        self.game_folder_path = Path(game_folder)
+        self.game_folder_path = Path(base_dir) / Path(game_folder)
+        print(f"Game folder path: {self.game_folder_path}")
         if not self.game_folder_path.exists():
+            print(f"Creating game folder: {self.game_folder_path}")
             self.game_folder_path.mkdir()
             
         self.temp_folder_path = None
@@ -186,7 +194,7 @@ class Launcher:
             
             download_url = urljoin(self.cdn_node,  self.resources_base_path_patch + "/" + file['dest'])
             download_url = quote(download_url, safe=':/')
-            krdiff_file_path = Path(file['dest'])
+            krdiff_file_path = Path(base_dir) / Path(file['dest'])
             print(f"Downloading file {i+1}/{length}: {krdiff_file_path}")
             self.download_file_with_resume(url=download_url, file_path=krdiff_file_path)
     
@@ -381,10 +389,10 @@ class Launcher:
         
         if os.name == "nt":
             tool_url = "https://gitee.com/tiz/LutheringLaves/raw/main/tools/hpatchz.exe"
-            file_name = Path("tools") / "hpatchz.exe"
+            file_name = Path(base_dir) / Path("tools") / "hpatchz.exe"
         if os.name == "posix":
             tool_url = "https://gitee.com/tiz/LutheringLaves/raw/main/tools/hpatchz"
-            file_name = Path("tools") / "hpatchz"
+            file_name = Path(base_dir) / Path("tools") / "hpatchz"
             
         if not self.download_file_with_resume(tool_url, file_name): return False
         

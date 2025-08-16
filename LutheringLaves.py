@@ -21,6 +21,7 @@ class LauncherState(Enum):
     NEEDUPDATE = 4
     UPDATING = 5
     MARGEING = 6
+    NETWORKERROR = 7
 
 class ProgressInfo:
     def __init__(self):
@@ -46,6 +47,10 @@ class Launcher:
         self.launcher_api = WW_LAUNCHER_API
         self.launcher_info = self.get_result(self.launcher_api)
         
+        if self.launcher_info is None:
+            self.state = LauncherState.NETWORKERROR
+            return
+        
         self.cdn_node = self.select_cdn()
         
         # create game folder
@@ -59,8 +64,8 @@ class Launcher:
         self.gamefile_index = self.get_gamefile_index()
             
         # download url middle path
-        self.resources_base_path = self.launcher_info['default']['resourcesBasePath']
-        self.current_version = self.launcher_info['default']['version']
+        self.resources_base_path = self.launcher_info['default']['resourcesBasePath'] if self.launcher_info else None
+        self.current_version = self.launcher_info['default']['version'] if self.launcher_info else None
         self.local_version = self.get_localVersion()
         
         self.download_game_progress = ProgressInfo()
@@ -98,6 +103,7 @@ class Launcher:
                 return
         
     def get_gamefile_index(self):
+        if self.launcher_info is None: return None
         
         indexfile_uri = self.launcher_info['default']['config']['indexFile']
         indexfile = self.get_result(urljoin(self.cdn_node, indexfile_uri))
@@ -268,6 +274,8 @@ class Launcher:
             return None
     
     def select_cdn(self):
+        if self.launcher_info is None: return None
+        
         cdnlist = self.launcher_info['default'].get('cdnList', None)
         
         if not cdnlist: return None

@@ -12,8 +12,8 @@ class DownloadWorker(QThread):
     
     download_finished = Signal()
     
-    verify_finished = Signal()
-    update_finished = Signal()
+    # verify_finished = Signal()
+    # update_finished = Signal()
     
     error = Signal(str)
     
@@ -32,13 +32,19 @@ class DownloadWorker(QThread):
     
     def run(self):
         try:
+            self.launcher.set_progress_callback(self.update_ui_progress)
+            
             if self.launcher.state == LauncherState.NEEDINSTALL:
-                self.launcher.set_progress_callback(self.update_ui_progress)
                 self.launcher.download_game()
                 self.launcher.verify_gamefile()
                 self.launcher.state = LauncherState.STARTGAME
                 self.download_finished.emit()
-            
+            if self.launcher.state == LauncherState.NEEDUPDATE:
+                self.launcher.update_game()
+                self.launcher.verify_gamefile()
+                self.launcher.state = LauncherState.STARTGAME
+                self.download_finished.emit()
+                
         except Exception as e:
             self.error.emit(str(e))
 
@@ -117,15 +123,15 @@ class MainWindow(QMainWindow):
         self.init_launcher_state()
     
     def init_launcher_state(self):
-        self.sync_action_text()
-    
-    def sync_action_text(self):
         if self.launcher.state == LauncherState.STARTGAME:
             self.action_button.setText("启动游戏")
+            self.action_button.setEnabled(True)
         if self.launcher.state == LauncherState.NEEDINSTALL:
             self.action_button.setText('下载游戏')
+            self.action_button.setEnabled(True)
         if self.launcher.state == LauncherState.NEEDUPDATE:
             self.action_button.setText('更新游戏')
+            self.action_button.setEnabled(True)
             
     def set_window_icon(self):
         icon_path = os.path.join(os.path.dirname(__file__), "resource", "launcher.ico")
@@ -215,7 +221,13 @@ class MainWindow(QMainWindow):
             self.worker = DownloadWorker(self.launcher)
             self.worker.download_progress.connect(self.download_progress_ui)
             self.worker.verify_progress.connect(self.verify_progress_ui)
+            self.worker.download_finished.connect(self.download_finished_ui)
+            self.worker.start()
+            
+        if self.launcher.state == LauncherState.NEEDUPDATE:
+            self.worker = DownloadWorker(self.launcher)
             self.worker.update_progress.connect(self.update_progress_ui)
+            self.worker.verify_progress.connect(self.verify_progress_ui)
             self.worker.download_finished.connect(self.download_finished_ui)
             self.worker.start()
     

@@ -6,7 +6,6 @@ import json
 import gzip
 import io
 import argparse
-import ssl
 from enum import Enum
 from pathlib import Path
 from urllib.request import urlopen, Request, HTTPError
@@ -47,8 +46,6 @@ class Launcher:
         self.launcher_api = WW_LAUNCHER_API
         self.launcher_info = self.get_result(self.launcher_api)
         
-        self.state = LauncherState.NEEDINSTALL
-        
         self.cdn_node = self.select_cdn()
         
         # create game folder
@@ -78,8 +75,28 @@ class Launcher:
         self.krdiff_file_path = None
         self.progress_callback = None
         
+        self.init_launcher_state()
+        
         self.init_incremental_update()
     
+    
+    def init_launcher_state(self):
+        self.state = LauncherState.STARTGAME
+        print("set launcher state to STARTGAME")
+        
+        if self.current_version != self.local_version:
+            self.state = LauncherState.NEEDUPDATE
+            print("set launcher state to NEEDUPDATE")
+            return
+        
+        resource_list = list(self.gamefile_index['resource'])
+        for file in resource_list:
+            file_path = self.game_folder_path.joinpath(Path(file['dest']))
+            if not file_path.exists():
+                self.state = LauncherState.NEEDINSTALL
+                print("set launcher state to NEEDINSTALL")
+                return
+        
     def get_gamefile_index(self):
         
         indexfile_uri = self.launcher_info['default']['config']['indexFile']
@@ -109,23 +126,37 @@ class Launcher:
             downloaded_count = self.download_game_progress.finished_count
             print(f"Downloading file {downloaded_count + 1} / {length}: {file_path}")
             self.download_file_with_resume(url=download_url, file_path=file_path, flag='download', file_size=file_size)
-            self.download_game_progress.finished_size += 1
+            self.download_game_progress.finished_count += 1
+            
+        self.update_localVersion()
     
     def update_game(self):
         print('Starting update game client files...')
-        length = len(self.gamefile_index['resource'])
-        for i, file in enumerate(self.gamefile_index['resource']):
+        
+        self.state = LauncherState.UPDATING
+        resource_list = list(self.gamefile_index['resource'])
+        self.update_game_progress.total_count = len(resource_list)
+        for resource in resource_list:
+            self.update_game_progress.total_size += resource['size']
+            
+        length = self.update_game_progress.total_count
+        
+        for file in resource_list:
             file_path = self.game_folder_path.joinpath(Path(file['dest']))
             current_md5 = self.get_file_md5(file_path)
-            print(f"Updataing file {i+1}/{length}: {file_path}")
+            updated_count = self.update_game_progress.finished_count
+            print(f"Updataing file {updated_count + 1} / {length}: {file_path}")
             if current_md5 == file['md5']:
+                self.update_progress(flag='update',value=int(file['size']))
+                self.update_game_progress.finished_count += 1
                 print(f'{file_path} MD5 match')
                 continue
 
             print(f'{file_path} MD5 mismatch (expected: {file["md5"]}, got: {current_md5})')
             download_url = urljoin(self.cdn_node, self.resources_base_path + "/" + file['dest'])
             download_url = quote(download_url, safe=':/')
-            self.download_file_with_resume(url=download_url, file_path=file_path, overwrite=True)
+            self.download_file_with_resume(url=download_url, file_path=file_path, overwrite=True, flag='update')
+            self.update_game_progress.finished_count += 1
 
         self.update_localVersion()
     
@@ -208,11 +239,6 @@ class Launcher:
                 'User-Agent': 'Mozilla/5.0',
                 'Accept-Encoding': 'gzip'
             })
-            
-            context = ssl.create_default_context()
-            context.check_hostname = False
-            context.verify_mode = ssl.CERT_NONE
-            
             with urlopen(req, timeout=10) as rsp:
                 if rsp.status != 200:
                     print(f"HTTP status {rsp.status} for {url}")

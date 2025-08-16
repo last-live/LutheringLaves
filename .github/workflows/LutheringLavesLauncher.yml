@@ -37,3 +37,18 @@ jobs:
           --windows-console-mode="disable"  --windows-icon-from-ico="resource/launcher.ico" \
           --main="LutheringLavesLauncher.py"  --enable-plugins="pyside6"  --linux-icon="resource/launcher.ico" \
           --include-raw-dir=tools=tools   --include-raw-dir=Font=Font   --include-raw-dir=resource=resource
+
+      - name: Compress LutheringLavesLauncher.dist
+        run: |
+          timestamp=$(date '+%Y%m%d_%H%M%S')
+          tar -czf "LutheringLavesLauncher_${timestamp}.zip" LutheringLavesLauncher.dist/
+
+      - name: Upload zip to WebDAV
+        uses: XPH0816/webdav-deploy-action@v0.3
+        with:
+          url: ${{ secrets.WEB_DAV_URL }}
+          username: ${{ secrets.WEB_DAV_USERNAME }}
+          password: ${{ secrets.WEB_DAV_PASSWORD }}
+          local: "LutheringLavesLauncher_${timestamp}.zip"
+          remote: "space2/lll-release/LutheringLavesLauncher_${timestamp}.zip"
+          method: "copy"

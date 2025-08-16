@@ -17,7 +17,7 @@ jobs:
 
     runs-on: self-hosted
     container:
-      image: python:3.13-slim
+      image: lastlive/nuitka-patchelf
 
     steps:
       - name: checkout
@@ -26,14 +26,17 @@ jobs:
           repository: ${{ github.event.pull_request.head.repo.full_name }}
           ref: ${{ github.head_ref }}
 
+      - name: Build Docker image
+        run: docker build -t patchelf .
+
       - name: Install dependencies
         run: |
-          apt-get update
-          apt-get install -y patchelf
           python -m pip install --upgrade pip
-          python -m pip install nuitka
           if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
 
       - name: Packing
         run: |
-          python packing.py
+          python -m nuitka --standalone --python-flag="-S" --follow-imports \ 
+          --windows-console-mode="disable"  --windows-icon-from-ico="resource/launcher.ico" \
+          --main="LutheringLavesLauncher.py"  --enable-plugins="pyside6"  --linux-icon="resource/launcher.ico" \
+          --include-raw-dir=tools=tools   --include-raw-dir=Font=Font   --include-raw-dir=resource=resource

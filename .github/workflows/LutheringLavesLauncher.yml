@@ -26,9 +26,6 @@ jobs:
           repository: ${{ github.event.pull_request.head.repo.full_name }}
           ref: ${{ github.head_ref }}
 
-      - name: Build Docker image
-        run: docker build -t patchelf .
-
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip

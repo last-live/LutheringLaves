@@ -148,7 +148,6 @@ class Launcher:
             logger.info(f"Downloading file {downloaded_count + 1} / {length}: {file_path}")
             self.download_file_with_resume(url=download_url, file_path=file_path, flag='download', file_size=file_size)
             self.download_game_progress.finished_count += 1
-        self.update_localVersion()
     
     def update_game(self):
         logger.info('Starting update game client files...')
@@ -173,8 +172,6 @@ class Launcher:
             download_url = quote(download_url, safe=':/')
             self.download_file_with_resume(url=download_url, file_path=file_path, overwrite=True, flag='update')
             self.update_game_progress.finished_count += 1
-
-        self.update_localVersion()
     
     def download_patch(self):
         
@@ -219,7 +216,6 @@ class Launcher:
                 
             shutil.rmtree(str(self.temp_folder_path))
             self.krdiff_file_path.unlink()
-            self.update_localVersion()
     
     def verify_gamefile(self):
         resource_list = list(self.gamefile_index['resource'])
@@ -247,6 +243,8 @@ class Launcher:
             else:
                 logger.error(f'{file_path} Still MD5 mismatch after re-download')
             self.update_progress(flag='verify',value=int(file['size']))
+            
+        self.update_localVersion()
     
     def get_result(self, url):
         try:

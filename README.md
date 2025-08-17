@@ -1,8 +1,27 @@
-### LutheringLaves 介绍
-鸣潮国服客户端下载脚本，方便在SteamDeck下载鸣潮国服客户端，Linux其他发行版同样适用。
+# LutheringLaves 介绍
+鸣潮第三方启动器，方便在SteamDeck下载鸣潮国服客户端，Linux其他发行版同样适用。目前有UI版和命令行版本，可自行选择。
+
+![](screenshot/Snipaste_2025-08-17_23-58-16.png)
 
 镜像仓库：https://gitee.com/tiz/LutheringLaves
 
+# UI版本使用
+
+#### 启动器安装
+1.steamdeck切换至桌面模式，下载项目release文件，解压后将`LutheringLavesLauncher/`目录下的`LutheringLavesLauncher.bin`右键添加到steam库里
+![添加到steam库](screenshot/Snipaste_2025-08-17_23-58-40.png)
+
+2.切换回掌机模式就能直接使用启动器下载、更新、运行游戏了，掌机模式下的运行效果如下图
+![掌机模式](screenshot/20250818000320_1.jpg)
+
+#### 下载目录
+目前游戏下载目录默认为 `LutheringLavesLauncher/` 目录下的 `Wuthering Waves Game` 目录，暂不支持自定义目录
+
+#### 运行环境
+启动器会自动检测`~/.local/share/Steam/compatibilitytools.d/`和`~/.local/share/Steam/steamapps/common/`目录下的所有可用 GE-Proton 和 Proton，优先使用最新版本的GE-Proton，如果没有GE-Proton，则使用Proton。
+
+
+# 命令版本使用
 #### 初次下载游戏
 1.运行以下命令后，会在当前目录下载'LutheringLaves.py'文件并创建'Wuthering Waves Game'文件夹，游戏文件会保存在'Wuthering Waves Game'文件夹下。
 ``` bash
@@ -44,6 +63,12 @@ python3 LutheringLaves.py --mode patch-update
 ### 项目打包
 
 ```
+# 项目克隆
+git clone https://github.com/last-live/LutheringLaves.git
+
+# 进入项目目录
+cd LutheringLaves
+
 # nuitka打包环境构建
 docker build -t lastlive/nuitka-patchelf:latest .
 

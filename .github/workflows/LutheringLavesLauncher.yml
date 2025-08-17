@@ -53,5 +53,11 @@ jobs:
           username: ${{ secrets.WEB_DAV_USERNAME }}
           password: ${{ secrets.WEB_DAV_PASSWORD }}
           local: "LutheringLavesLauncher_${{ env.timestamp }}.zip"
-          remote: "space2/LLL-release/LutheringLavesLauncher_${{ env.timestamp }}.zip"
+          remote: "space2/LLL-release/"
           method: "copy"
+
+      - name: Clean up
+        run: |
+          rm "LutheringLavesLauncher_${{ env.timestamp }}.zip"
+          rm -rf LutheringLavesLauncher.dist/
+          rm -rf LutheringLavesLauncher.build/

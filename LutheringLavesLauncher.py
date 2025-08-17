@@ -1,9 +1,19 @@
 import sys
 import os
+import logging
+from pathlib import Path
 from PySide6.QtWidgets import QApplication, QMainWindow, QWidget, QVBoxLayout, QLabel, QPushButton
 from PySide6.QtGui import QPixmap, QPalette, QPainter, QFontDatabase, QFont, QIcon
 from PySide6.QtCore import Qt, QThread, Signal
 from LutheringLaves import Launcher, LauncherState, ProgressInfo
+
+# 初始化全局日志
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s [%(levelname)s] %(message)s',
+    handlers=[logging.FileHandler('launcher.log', encoding='utf-8'), logging.StreamHandler()]
+)
+logger = logging.getLogger("LutheringLaves")
 
 class DownloadWorker(QThread):
     download_progress = Signal(object)
@@ -20,6 +30,7 @@ class DownloadWorker(QThread):
     def __init__(self, launcher:Launcher):
         super().__init__()
         self.launcher = launcher
+        logger.info("DownloadWorker initialized.")
     
     def update_ui_progress(self, mutil_progress, flag):
         
@@ -32,27 +43,35 @@ class DownloadWorker(QThread):
     
     def run(self):
         try:
+            logger.info(f"Worker started with state: {self.launcher.state}")
             self.launcher.set_progress_callback(self.update_ui_progress)
             
             if self.launcher.state == LauncherState.NEEDINSTALL:
+                logger.info("Starting game download...")
                 self.launcher.download_game()
+                logger.info("Verifying game files...")
                 self.launcher.verify_gamefile()
                 self.launcher.state = LauncherState.STARTGAME
+                logger.info("Download and verify finished.")
                 self.download_finished.emit()
             if self.launcher.state == LauncherState.NEEDUPDATE:
+                logger.info("Starting game update...")
                 self.launcher.update_game()
+                logger.info("Verifying game files after update...")
                 self.launcher.verify_gamefile()
                 self.launcher.state = LauncherState.STARTGAME
+                logger.info("Update and verify finished.")
                 self.download_finished.emit()
                 
         except Exception as e:
+            logger.error(f"Error in DownloadWorker: {e}", exc_info=True)
             self.error.emit(str(e))
 
 class MainWindow(QMainWindow):
     
     def __init__(self):
         super().__init__()
-        
+        logger.info("MainWindow initialized.")
         game_folder = "Wuthering Waves Game"
         self.launcher = Launcher(game_folder)
         
@@ -121,6 +140,7 @@ class MainWindow(QMainWindow):
         self.set_background_images()
         
         self.init_launcher_state()
+        logger.info(f"Launcher state: {self.launcher.state}")
     
     def init_launcher_state(self):
         if self.launcher.state == LauncherState.STARTGAME:
@@ -208,30 +228,40 @@ class MainWindow(QMainWindow):
                                self.height() - self.action_button.height() - 50)
     
     def action_button_clicked(self):
+        logger.info(f"Action button clicked. Current state: {self.launcher.state}")
         if self.launcher.state == LauncherState.STARTGAME:
-            if os.name == "nt":
-                game_exe = self.launcher.game_folder_path / "Wuthering Waves.exe"
-                import subprocess
-                subprocess.Popen(f'"{game_exe}"', shell=True)
-            if os.name == "posix":
-                tool_url = "https://gitee.com/tiz/LutheringLaves/raw/main/tools/hpatchz"
-                file_name = Path("hpatchz")
+            self.launcher.start_game_process()
+            self.launcher.state = LauncherState.GAMERUNNING
+            self.action_button.setEnabled(True)
+            self.action_button.setText("停止游戏")
+            self.monitor_game_process()
+            return
 
         if self.launcher.state == LauncherState.NEEDINSTALL:
+            logger.info("Starting download worker for install.")
             self.worker = DownloadWorker(self.launcher)
             self.worker.download_progress.connect(self.download_progress_ui)
             self.worker.verify_progress.connect(self.verify_progress_ui)
             self.worker.download_finished.connect(self.download_finished_ui)
             self.worker.start()
+            return
             
         if self.launcher.state == LauncherState.NEEDUPDATE:
+            logger.info("Starting download worker for update.")
             self.worker = DownloadWorker(self.launcher)
             self.worker.update_progress.connect(self.update_progress_ui)
             self.worker.verify_progress.connect(self.verify_progress_ui)
             self.worker.download_finished.connect(self.download_finished_ui)
             self.worker.start()
-    
+            return
+        
+        if self.launcher.state == LauncherState.GAMERUNNING:
+            if hasattr(self.launcher, 'game_process') and self.launcher.game_process:
+                logger.info("Try to kill game process")
+                self.launcher.game_process.kill()
+
     def download_progress_ui(self, info: ProgressInfo):
+        logger.info(f"Download progress: {info.finished_size}/{info.total_size}")
         self.action_button.setEnabled(False)
         self.action_button.setText("下载中...")
         self.info_label.setVisible(True)
@@ -241,6 +271,7 @@ class MainWindow(QMainWindow):
         self.info_label.setText(f"已下载 {finished_size / 1024 / 1024 / 1024:.1f}GB / {total_size / 1024 / 1024 /1024:.1f}GB")
     
     def verify_progress_ui(self, info: ProgressInfo):
+        logger.info(f"Verify progress: {info.finished_size}/{info.total_size}")
         self.action_button.setEnabled(False)
         self.action_button.setText("校验中...")
         self.info_label.setVisible(True)
@@ -257,15 +288,48 @@ class MainWindow(QMainWindow):
         self.info_label.setText(f"已更新 {finished_size / 1024 / 1024 / 1024:.1f}GB / {total_size / 1024 / 1024 /1024:.1f}GB")
     
     def download_finished_ui(self):
+        logger.info("Download finished. Ready to launch game.")
         self.action_button.setEnabled(True)
         self.action_button.setText("启动游戏")
         self.info_label.setVisible(False)
     
     def download_error(self, error):
+        logger.error(f"Download error: {error}")
         self.action_button.setEnabled(True)
         self.action_button.setText("下载失败")
+    
+    def monitor_game_process(self):
+        if hasattr(self, 'game_process') and self.launcher:
+            from PySide6.QtCore import QTimer
+            self.process_monitor_timer = QTimer()
+            self.process_monitor_timer.timeout.connect(self.check_game_process)
+            self.process_monitor_timer.start(1000)  # 每秒检查一次
+
+    def check_game_process(self):
+        if hasattr(self.launcher, 'game_process') and self.launcher.game_process:
+            # 检查进程是否仍在运行
+            if self.launcher.game_process.poll() is not None:
+                # 进程已结束
+                exit_code = self.launcher.game_process.returncode
+                logger.info(f"Game process finished with exit code: {exit_code}")
+                
+                # 停止定时器
+                if hasattr(self, 'process_monitor_timer'):
+                    self.process_monitor_timer.stop()
+                
+                self.on_game_finished(exit_code)
+            else:
+                # 进程仍在运行
+                logger.debug("Game process is still running...")
+
+    def on_game_finished(self, exit_code):
+        logger.info(f"Game finished with exit code: {exit_code}")
+        self.launcher.state = LauncherState.STARTGAME
+        self.action_button.setEnabled(True)
+        self.action_button.setText("启动游戏")
 
 def main():
+    logger.info("Application started.")
     app = QApplication(sys.argv)
     
     icon_path = os.path.join(os.path.dirname(__file__), "resource", "launcher.ico")

@@ -1,3 +1,4 @@
+
 import os
 import shutil
 import hashlib
@@ -5,29 +6,39 @@ import json
 import gzip
 import io
 import argparse
+import logging
+import subprocess
 from enum import Enum
 from pathlib import Path
 from urllib.request import urlopen, Request, HTTPError
 from urllib.parse import urljoin,quote
 
-# 适配 Nu
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s [%(levelname)s] %(message)s',
+    handlers=[logging.FileHandler('launcher.log', encoding='utf-8'), logging.StreamHandler()]
+)
+logger = logging.getLogger("LutheringLaves")
+
+# 适配 nuitka 打包后证书丢失与文件路径异常问题
 import certifi
 os.environ["SSL_CERT_FILE"] = certifi.where()
 import sys
 base_dir = os.path.dirname(sys.argv[0])
-print(f"base dir: {base_dir}")
+logger.info(f"base dir: {base_dir}")
 
 WW_LAUNCHER_API = 'https://prod-cn-alicdn-gamestarter.kurogame.com/launcher/game/G152/10003_Y8xXrXk65DqFHEDgApn3cpK5lfczpFx5/index.json'
 
 class LauncherState(Enum):
     STARTGAME = 0
-    NEEDINSTALL = 1
-    DOWNLOADING = 2
-    VALIDATING = 3
-    NEEDUPDATE = 4
-    UPDATING = 5
-    MARGEING = 6
-    NETWORKERROR = 7
+    GAMERUNNING =1
+    NEEDINSTALL = 2
+    DOWNLOADING = 3
+    VALIDATING = 4
+    NEEDUPDATE = 5
+    UPDATING = 6
+    MERGEING = 7
+    NETWORKERROR = 8
 
 class ProgressInfo:
     def __init__(self):
@@ -61,9 +72,9 @@ class Launcher:
         
         # create game folder
         self.game_folder_path = Path(base_dir) / Path(game_folder)
-        print(f"Game folder path: {self.game_folder_path}")
+        logger.info(f"Game folder path: {self.game_folder_path}")
         if not self.game_folder_path.exists():
-            print(f"Creating game folder: {self.game_folder_path}")
+            logger.info(f"Creating game folder: {self.game_folder_path}")
             self.game_folder_path.mkdir()
             
         self.temp_folder_path = None
@@ -89,25 +100,24 @@ class Launcher:
         self.progress_callback = None
         
         self.init_launcher_state()
-        
         self.init_incremental_update()
-    
     
     def init_launcher_state(self):
         self.state = LauncherState.STARTGAME
-        print("set launcher state to STARTGAME")
+        logger.info("set launcher state to STARTGAME")
         
-        if self.current_version != self.local_version:
-            self.state = LauncherState.NEEDUPDATE
-            print("set launcher state to NEEDUPDATE")
-            return
-        
-        resource_list = list(self.gamefile_index['resource'])
-        for file in resource_list:
-            file_path = self.game_folder_path.joinpath(Path(file['dest']))
-            if not file_path.exists():
-                self.state = LauncherState.NEEDINSTALL
-                print("set launcher state to NEEDINSTALL")
+        if self.local_version is None:
+            resource_list = list(self.gamefile_index['resource'])
+            for file in resource_list:
+                file_path = self.game_folder_path.joinpath(Path(file['dest']))
+                if not file_path.exists():
+                    self.state = LauncherState.NEEDINSTALL
+                    logger.info("set launcher state to NEEDINSTALL")
+                    return
+        else:
+            if self.current_version != self.local_version:
+                self.state = LauncherState.NEEDUPDATE
+                logger.info("set launcher state to NEEDUPDATE")
                 return
         
     def get_gamefile_index(self):
@@ -121,52 +131,44 @@ class Launcher:
         return indexfile
         
     def download_game(self):
-        print('Start downloading game client files...')
+        logger.info('Start downloading game client files...')
         self.state = LauncherState.DOWNLOADING
         resource_list = list(self.gamefile_index['resource'])
         self.download_game_progress.total_count = len(resource_list)
         for resource in resource_list:
             self.download_game_progress.total_size += resource['size']
-            
         length = self.download_game_progress.total_count
-        
-        print(f'Total resource files: {length}')
-
+        logger.info(f'Total resource files: {length}')
         for file in resource_list:
             download_url = urljoin(self.cdn_node, self.resources_base_path + "/" + file['dest'])
             download_url = quote(download_url, safe=':/')
             file_size = int(file['size'])
             file_path = self.game_folder_path.joinpath(Path(file['dest']))
             downloaded_count = self.download_game_progress.finished_count
-            print(f"Downloading file {downloaded_count + 1} / {length}: {file_path}")
+            logger.info(f"Downloading file {downloaded_count + 1} / {length}: {file_path}")
             self.download_file_with_resume(url=download_url, file_path=file_path, flag='download', file_size=file_size)
             self.download_game_progress.finished_count += 1
-            
         self.update_localVersion()
     
     def update_game(self):
-        print('Starting update game client files...')
-        
+        logger.info('Starting update game client files...')
         self.state = LauncherState.UPDATING
         resource_list = list(self.gamefile_index['resource'])
         self.update_game_progress.total_count = len(resource_list)
         for resource in resource_list:
             self.update_game_progress.total_size += resource['size']
-            
         length = self.update_game_progress.total_count
-        
         for file in resource_list:
             file_path = self.game_folder_path.joinpath(Path(file['dest']))
             current_md5 = self.get_file_md5(file_path)
             updated_count = self.update_game_progress.finished_count
-            print(f"Updataing file {updated_count + 1} / {length}: {file_path}")
+            logger.info(f"Updataing file {updated_count + 1} / {length}: {file_path}")
             if current_md5 == file['md5']:
                 self.update_progress(flag='update',value=int(file['size']))
                 self.update_game_progress.finished_count += 1
-                print(f'{file_path} MD5 match')
+                logger.info(f'{file_path} MD5 match')
                 continue
-
-            print(f'{file_path} MD5 mismatch (expected: {file["md5"]}, got: {current_md5})')
+            logger.warning(f'{file_path} MD5 mismatch (expected: {file["md5"]}, got: {current_md5})')
             download_url = urljoin(self.cdn_node, self.resources_base_path + "/" + file['dest'])
             download_url = quote(download_url, safe=':/')
             self.download_file_with_resume(url=download_url, file_path=file_path, overwrite=True, flag='update')
@@ -188,17 +190,17 @@ class Launcher:
                 download_url = urljoin(self.cdn_node, file['fromFolder'] + "/" + file['dest'])
                 download_url = quote(download_url, safe=':/')
                 file_path = self.temp_folder_path.joinpath(Path(file['dest']))
-                print(f"Downloading file {i+1}/{length}: {file_path}")
+                logger.info(f"Downloading file {i+1}/{length}: {file_path}")
                 self.download_file_with_resume(url=download_url, file_path=file_path)
                 continue
             
             download_url = urljoin(self.cdn_node,  self.resources_base_path_patch + "/" + file['dest'])
             download_url = quote(download_url, safe=':/')
             krdiff_file_path = Path(base_dir) / Path(file['dest'])
-            print(f"Downloading file {i+1}/{length}: {krdiff_file_path}")
+            logger.info(f"Downloading file {i+1}/{length}: {krdiff_file_path}")
             self.download_file_with_resume(url=download_url, file_path=krdiff_file_path)
     
-    def marge_patch(self):
+    def merge_patch(self):
         
         if self.krdiff_file_path:
             self.run_hpatchz(self.krdiff_file_path, self.game_folder_path, self.temp_folder_path)
@@ -230,22 +232,21 @@ class Launcher:
             current_md5 = self.get_file_md5(file_path)
 
             if current_md5 == file['md5']:
-                print(f'{file_path} MD5 match')
+                logger.info(f'{file_path} MD5 match')
                 self.update_progress(flag='verify',value=int(file['size']))
                 continue
             
-            print(f'{file_path} MD5 mismatch (expected: {file["md5"]}, got: {current_md5})')
+            logger.warning(f'{file_path} MD5 mismatch (expected: {file["md5"]}, got: {current_md5})')
             download_url = urljoin(self.cdn_node, self.resources_base_path + "/" + file['dest'])
             download_url = quote(download_url, safe=':/')
             self.download_file_with_resume(url=download_url, file_path=file_path, overwrite=True)
             
             current_md5 = self.get_file_md5(file_path)
             if current_md5 == file['md5']:
-                print(f'{file_path} MD5 OK after re-download')
+                logger.info(f'{file_path} MD5 OK after re-download')
             else:
-                print(f'{file_path} Still MD5 mismatch after re-download')
+                logger.error(f'{file_path} Still MD5 mismatch after re-download')
             self.update_progress(flag='verify',value=int(file['size']))
-
     
     def get_result(self, url):
         try:
@@ -255,7 +256,7 @@ class Launcher:
             })
             with urlopen(req, timeout=10) as rsp:
                 if rsp.status != 200:
-                    print(f"HTTP status {rsp.status} for {url}")
+                    logger.error(f"HTTP status {rsp.status} for {url}")
                     return None
                 content_encoding = rsp.headers.get('Content-Encoding', '').lower()
                 data = rsp.read()
@@ -264,7 +265,7 @@ class Launcher:
                         with gzip.GzipFile(fileobj=io.BytesIO(data)) as f:
                             data = f.read()
                     except Exception as e:
-                        print(f"Gzip decompression error: {str(e)}")
+                        logger.error(f"Gzip decompression error: {str(e)}")
                         return None
                 try:
                     return json.loads(data.decode('utf-8'))
@@ -272,13 +273,13 @@ class Launcher:
                     try:
                         return json.loads(data.decode('gbk'))
                     except:
-                        print("Failed to decode JSON response")
+                        logger.error("Failed to decode JSON response")
                         return None        
         except HTTPError as e:
-            print(f"HTTP Error {e.code}: {e.reason}")
+            logger.error(f"HTTP Error {e.code}: {e.reason}")
             return None
         except Exception as e:
-            print(f"Error fetching patch info: {str(e)}")
+            logger.error(f"Error fetching patch info: {str(e)}")
             return None
     
     def select_cdn(self):
@@ -328,11 +329,11 @@ class Launcher:
             if not overwrite:
                 if file_size:
                     self.update_progress(flag=flag, value=file_size)
-                print(f'{file_path} already exists. Skipping download.')
+                logger.info(f'{file_path} already exists. Skipping download.')
                 return True
             else:
                 os.remove(file_path)
-                print(f'{file_path} is deleted and start re-download.')
+                logger.info(f'{file_path} is deleted and start re-download.')
         
         temp_file_path = directory / f'{file_path.name}.temp'
         downloaded_bytes = 0
@@ -355,10 +356,10 @@ class Launcher:
                     content_length = int(rsp.headers.get('Content-Length'))
                     total_size = content_length if content_length else 0
                     if downloaded_bytes > 0:
-                        print("Server doesn't support resume, restarting download")
+                        logger.warning("Server doesn't support resume, restarting download")
                         downloaded_bytes = 0
                 else:
-                    print(f"Unexpected HTTP status: {rsp.status}")
+                    logger.error(f"Unexpected HTTP status: {rsp.status}")
                     return False
                 
                 mode = "ab" if downloaded_bytes > 0 else "wb"
@@ -372,13 +373,12 @@ class Launcher:
                         self.update_progress(flag=flag, value=len(chunk))
                         if total_size > 0:
                             percent = (downloaded_bytes / total_size) * 100
-                            print(f"\r{file_path} size:{total_size/1024/1024:.1f} MB {percent:.1f}%", end='', flush=True)
-                print('',end='\n')
+                            logger.info(f"{file_path} size:{total_size/1024/1024:.1f} MB {percent:.1f}%")
             
             shutil.move(temp_file_path, file_path)
             return True
         except Exception as e:
-            print(f"Download error: {str(e)}")
+            logger.error(f"Download error: {str(e)}")
             if e.code == 416 and downloaded_bytes == content_length:
                 if temp_file_path.exists(): 
                     shutil.move(temp_file_path, file_path)
@@ -469,9 +469,97 @@ class Launcher:
                     md5_hash.update(chunk)
             return md5_hash.hexdigest()
         except FileNotFoundError:
-            print(f"The file {file_path} does not exist.")
+            logger.error(f"The file {file_path} does not exist.")
             return None
+    
+    def start_game_process(self):
+        logger.info("Launching game...")
+        if os.name == "nt":
+            game_exe = self.launcher.game_folder_path / "Wuthering Waves.exe"
+            self.game_process = subprocess.Popen(f'"{game_exe}"', shell=True)
+        if os.name == "posix":
+            # Use Proton to launch the game on Linux
+            AppId = "3658110"
+            base_dir = os.path.dirname(sys.argv[0])
+            game_exe_path =  Path(base_dir) / "Wuthering Waves Game" / "Wuthering Waves.exe"
+            
+            steam_dir_path = Path(os.path.expanduser("~")) / '.steam' / 'steam'
+            
+            proton_path = self.get_latest_proton()
+            
+            compatdata_path = Path(base_dir) / "compatdata" / AppId
+            if not compatdata_path.exists():
+                compatdata_path.mkdir(parents=True, exist_ok=True)
+            compatdata_path = compatdata_path.resolve()
+
+            os.environ["STEAM_COMPAT_DATA_PATH"] = str(compatdata_path)
+            os.environ["STEAM_COMPAT_CLIENT_INSTALL_PATH"] = str(steam_dir_path)
+            os.environ["STEAMAPPID"] = "3658110"
+            os.environ["STEAMDECK"] = "1"
+            logger.info(f"compatdata_path: {compatdata_path}")
+            # steam_launch_command = f"SteamDeck=1 /home/deck/.local/share/Steam/ubuntu12_32/steam-launch-wrapper \
+            #     -- /home/deck/.local/share/Steam/ubuntu12_32/reaper \
+            #     SteamLaunch AppId={AppId} \
+            #     -- /home/deck/.local/share/Steam/steamapps/common/SteamLinuxRuntime_sniper/_v2-entry-point \
+            #     --verb=waitforexitandrun \
+            #     -- {proton_path} \
+            #     waitforexitandrun \
+            #     {game_exe}"
+            try:
+                self.game_process = subprocess.Popen([
+                    proton_path,
+                    "waitforexitandrun",
+                    game_exe_path
+                ])
+                logger.info(f"Launched game with Proton: {proton_path} run {game_exe_path}")
+            except Exception as e:
+                logger.error(f"Failed to launch game with Proton: {e}")
+
+    def find_available_proton(self):
+        # Find all available Proton versions
+        geproton_versions = []
+        geproton_dir_path = Path(os.path.expanduser("~")) / '.steam' / 'steam' / 'compatibilitytools.d'
+        for entry in os.listdir(geproton_dir_path):
+            if entry.startswith("GE-Proton"):
+                proton_file_path = geproton_dir_path / entry / "proton"
+                version_file_path = geproton_dir_path / entry / "version"
+                if proton_file_path.exists() and version_file_path.exists():
+                    with open(version_file_path, 'r') as f:
+                        version_content = f.read().strip()
+                        timestamp_str, _ = version_content.split(' ')
+                    proton_version_dict = {'proton_path':proton_file_path, 'timestamp':timestamp_str}
+                    geproton_versions.append(proton_version_dict)
+        geproton_versions.sort(key=lambda x: x['timestamp'], reverse=True)
         
+        proton_versions = []
+        proton_dir_path = Path(os.path.expanduser("~")) / '.steam' / 'steam' / 'steamapps' / 'common'
+        for entry in os.listdir(proton_dir_path):
+            if entry.startswith("Proton"):
+                proton_file_path = proton_dir_path / entry / "proton"
+                version_file_path = proton_dir_path / entry / "version"
+                if proton_file_path.exists() and version_file_path.exists():
+                    with open(version_file_path, 'r') as f:
+                        version_content = f.read().strip()
+                        timestamp_str, _ = version_content.split(' ')
+                    proton_version_dict = {'proton_path':proton_file_path, 'timestamp':timestamp_str}
+                    proton_versions.append(proton_version_dict)
+        proton_versions.sort(key=lambda x: x['timestamp'], reverse=True)
+        
+        return geproton_versions, proton_versions
+    
+    def has_available_proton(self):
+        geproton_versions, proton_versions = self.find_available_proton()
+        if len(geproton_versions) == 0 or len(proton_versions) == 0:
+            return False
+        
+    def get_latest_proton(self):
+        geproton_versions, proton_versions = self.find_available_proton()
+        if len(geproton_versions) > 0:
+            return geproton_versions[0]['proton_path']
+        if len(proton_versions) > 0:
+            return proton_versions[0]['proton_path']
+        return None
+
 if __name__ == '__main__':
     
     parser = argparse.ArgumentParser()
@@ -480,20 +568,21 @@ if __name__ == '__main__':
     args = parser.parse_args()
     
     launcher = Launcher(game_folder=args.folder)
-    
+    launcher.find_available_proton()
+    launcher.start_game_process()
     # download game client file
-    if args.mode == 'install':
-        launcher.download_game()
-        launcher.verify_gamefile()
-        launcher.update_localVersion()  
+    # if args.mode == 'install':
+    #     launcher.download_game()
+    #     launcher.verify_gamefile()
+    #     launcher.update_localVersion()  
     
-    # update game client file
-    if args.mode == 'update':
-        launcher.update_game()
-        launcher.verify_gamefile()
-        launcher.update_localVersion()  
+    # # update game client file
+    # if args.mode == 'update':
+    #     launcher.update_game()
+    #     launcher.verify_gamefile()
+    #     launcher.update_localVersion()  
     
-    # Incremental updates
-    if args.mode == 'patch-update':
-        launcher.download_patch()
-        launcher.marge_patch()
+    # # Incremental updates
+    # if args.mode == 'patch-update':
+    #     launcher.download_patch()
+    #     launcher.merge_patch()

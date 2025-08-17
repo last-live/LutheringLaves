@@ -1,7 +1,7 @@
 import sys
 import os
 import logging
-from pathlib import Path
+import threading
 from PySide6.QtWidgets import QApplication, QMainWindow, QWidget, QVBoxLayout, QLabel, QPushButton
 from PySide6.QtGui import QPixmap, QPalette, QPainter, QFontDatabase, QFont, QIcon
 from PySide6.QtCore import Qt, QThread, Signal
@@ -30,10 +30,28 @@ class DownloadWorker(QThread):
     def __init__(self, launcher:Launcher):
         super().__init__()
         self.launcher = launcher
+        self._paused = False
+        self._resume_event = threading.Event()
+        self._resume_event.set()  # Initially not paused
         logger.info("DownloadWorker initialized.")
     
+    def pause(self):
+        self._paused = True
+        self._resume_event.clear()
+        logger.info("DownloadWorker paused.")
+    
+    def resume(self):
+        self._paused = False
+        self._resume_event.set()
+        logger.info("DownloadWorker resumed.")
+    
+    def is_paused(self):
+        return self._paused
+    
     def update_ui_progress(self, mutil_progress, flag):
-        
+        if self._paused:
+            self._resume_event.wait()
+            
         if flag == "download":
             self.download_progress.emit(mutil_progress[flag])
         elif flag == "verify":

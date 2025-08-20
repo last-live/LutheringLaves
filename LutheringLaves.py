@@ -566,21 +566,20 @@ if __name__ == '__main__':
     args = parser.parse_args()
     
     launcher = Launcher(game_folder=args.folder)
-    launcher.find_available_proton()
-    launcher.start_game_process()
+
     # download game client file
-    # if args.mode == 'install':
-    #     launcher.download_game()
-    #     launcher.verify_gamefile()
-    #     launcher.update_localVersion()  
+    if args.mode == 'install':
+        launcher.download_game()
+        launcher.verify_gamefile()
+        launcher.update_localVersion()  
     
-    # # update game client file
-    # if args.mode == 'update':
-    #     launcher.update_game()
-    #     launcher.verify_gamefile()
-    #     launcher.update_localVersion()  
+    # update game client file
+    if args.mode == 'update':
+        launcher.update_game()
+        launcher.verify_gamefile()
+        launcher.update_localVersion()  
     
-    # # Incremental updates
-    # if args.mode == 'patch-update':
-    #     launcher.download_patch()
-    #     launcher.merge_patch()
+    # Incremental updates
+    if args.mode == 'patch-update':
+        launcher.download_patch()
+        launcher.merge_patch()

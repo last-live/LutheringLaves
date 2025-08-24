@@ -35,7 +35,7 @@ jobs:
         run: |
           python -m nuitka --standalone --python-flag="-S" --follow-imports \
           --windows-console-mode="disable"  --windows-icon-from-ico="resource/launcher.ico" \
-          --main="LutheringLavesLauncher.py"  --enable-plugins="pyside6"  --linux-icon="resource/launcher.ico" \
+          --main="main.py"  --enable-plugins="pyside6"  --linux-icon="resource/launcher.ico" \
           --include-raw-dir=tools=tools   --include-raw-dir=Font=Font   --include-raw-dir=resource=resource
 
       - name: Get current time

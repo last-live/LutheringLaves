@@ -1,19 +1,11 @@
-import sys
 import os
-import logging
+import sys
 import threading
-from PySide6.QtWidgets import QApplication, QMainWindow, QWidget, QVBoxLayout, QLabel, QPushButton
+from PySide6.QtWidgets import QMainWindow, QWidget, QVBoxLayout, QLabel, QPushButton
 from PySide6.QtGui import QPixmap, QPalette, QPainter, QFontDatabase, QFont, QIcon
 from PySide6.QtCore import Qt, QThread, Signal
-from LutheringLaves import Launcher, LauncherState, ProgressInfo
-
-# 初始化全局日志
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s [%(levelname)s] %(message)s',
-    handlers=[logging.FileHandler('launcher.log', encoding='utf-8'), logging.StreamHandler()]
-)
-logger = logging.getLogger("LutheringLaves")
+from ..LutheringLaves import Launcher, LauncherState, ProgressInfo, logger
+from ..windows.SettingWindow import SettingsWindow
 
 class DownloadWorker(QThread):
     download_progress = Signal(object)
@@ -119,12 +111,33 @@ class MainWindow(QMainWindow):
         self.background_label.setAlignment(Qt.AlignCenter)
         layout.addWidget(self.background_label)
         
+        # 创建设置按钮
+        self.settings_button = QPushButton("设置")
+        self.settings_button.setFixedSize(60, 55)
+        self.settings_button.clicked.connect(self.settings_button_clicked)
+        if hasattr(self, 'custom_font'):
+            self.settings_button.setFont(QFont(self.custom_font, 16, QFont.Bold))
+        # 设置按钮样式：灰色背景，白色字体
+        self.settings_button.setStyleSheet("""
+            QPushButton {
+                background-color: #e6e6e6;
+                color: black;
+            }
+            QPushButton:hover {
+                background-color: #f1f1f1;
+            }
+            QPushButton:pressed {
+                background-color: #e0e0e0;
+            }
+        """)
+        self.settings_button.setParent(self)
+        
         # 创建按钮和日志显示区域
         self.action_button = QPushButton("下载游戏")
-        self.action_button.setFixedSize(260, 60)
+        self.action_button.setFixedSize(260, 55)
         self.action_button.clicked.connect(self.action_button_clicked)
         if hasattr(self, 'custom_font'):
-            self.action_button.setFont(QFont(self.custom_font, 18, QFont.Bold))
+            self.action_button.setFont(QFont(self.custom_font, 16, QFont.Bold))
         # 设置按钮样式：白色背景，黑色字体
         self.action_button.setStyleSheet("""
             QPushButton {
@@ -177,7 +190,7 @@ class MainWindow(QMainWindow):
             self.setWindowIcon(QIcon(icon_path))
         
     def load_custom_font(self):
-        font_path = os.path.join(os.path.dirname(__file__), "Font", "SourceHanSansCN-VF-2.otf")
+        font_path = os.path.join(os.path.dirname(sys.argv[0]), "Font", "SourceHanSansCN-VF-2.otf")
         if os.path.exists(font_path):
             font_id = QFontDatabase.addApplicationFont(font_path)
             if font_id != -1:
@@ -190,8 +203,8 @@ class MainWindow(QMainWindow):
         
     def set_background_images(self):
         # 获取图片路径
-        image1_path = os.path.join(os.path.dirname(__file__), "resource", "a51wo90rl10wqlnla0.png")
-        image2_path = os.path.join(os.path.dirname(__file__), "resource", "tjxl7pvzuliz4hkx3e.webp")
+        image1_path = os.path.join(os.path.dirname(sys.argv[0]), "resource", "a51wo90rl10wqlnla0.png")
+        image2_path = os.path.join(os.path.dirname(sys.argv[0]), "resource", "tjxl7pvzuliz4hkx3e.webp")
         
         if os.path.exists(image1_path) and os.path.exists(image2_path):
             # 加载两张图片
@@ -240,11 +253,20 @@ class MainWindow(QMainWindow):
         
         self.info_label.move((self.width() - self.info_label.width()) - 40,
                             self.height() - self.action_button.height() - self.info_label.height() - 50)
+        
+        # 更新设置按钮位置到右下角，位于操作按钮左侧
+        self.settings_button.move(self.width() - self.action_button.width() - self.settings_button.width() - 50, 
+                                 self.height() - self.settings_button.height() - 50)
 
         # 更新按钮位置到右下角
         self.action_button.move(self.width() - self.action_button.width() - 40, 
                                self.height() - self.action_button.height() - 50)
     
+    def settings_button_clicked(self):
+        logger.info("Settings button clicked")
+        settings_window = SettingsWindow(self)
+        settings_window.exec()
+
     def action_button_clicked(self):
         logger.info(f"Action button clicked. Current state: {self.launcher.state}")
         if self.launcher.state == LauncherState.STARTGAME:
@@ -279,7 +301,7 @@ class MainWindow(QMainWindow):
                 self.launcher.game_process.kill()
 
     def download_progress_ui(self, info: ProgressInfo):
-        logger.info(f"Download progress: {info.finished_size}/{info.total_size}")
+        # logger.info(f"Download progress: {info.finished_size}/{info.total_size}")
         self.action_button.setEnabled(False)
         self.action_button.setText("下载中...")
         self.info_label.setVisible(True)
@@ -289,7 +311,7 @@ class MainWindow(QMainWindow):
         self.info_label.setText(f"已下载 {finished_size / 1024 / 1024 / 1024:.1f}GB / {total_size / 1024 / 1024 /1024:.1f}GB")
     
     def verify_progress_ui(self, info: ProgressInfo):
-        logger.info(f"Verify progress: {info.finished_size}/{info.total_size}")
+        # logger.info(f"Verify progress: {info.finished_size}/{info.total_size}")
         self.action_button.setEnabled(False)
         self.action_button.setText("校验中...")
         self.info_label.setVisible(True)
@@ -345,19 +367,3 @@ class MainWindow(QMainWindow):
         self.launcher.state = LauncherState.STARTGAME
         self.action_button.setEnabled(True)
         self.action_button.setText("启动游戏")
-
-def main():
-    logger.info("Application started.")
-    app = QApplication(sys.argv)
-    
-    icon_path = os.path.join(os.path.dirname(__file__), "resource", "launcher.ico")
-    if os.path.exists(icon_path):
-        app.setWindowIcon(QIcon(icon_path))
-    
-    window = MainWindow()
-    window.show()
-    
-    sys.exit(app.exec())
-
-if __name__ == "__main__":
-    main()

@@ -73,9 +73,9 @@ cd LutheringLaves
 docker build -t lastlive/nuitka-patchelf:latest .
 
 # 在容器内打包
-docker run -it --rm -v ${PWD}:/home/nuitka/Lutheringlaves -w /home/nuitka/Lutheringlaves lastlive/nuitka-patchelf \
+docker run -it --rm -v ${PWD}:/home/nuitka/Lutheringlaves -w /home/nuitka/Lutheringlaves lastlive/nuitka-patchelf:latest \
         nuitka --standalone --python-flag="-S" --follow-imports \
         --windows-console-mode="disable"  --windows-icon-from-ico="resource/launcher.ico" \
-        --main="LutheringLavesLauncher.py"  --enable-plugins="pyside6"  --linux-icon="resource/launcher.ico" \
+        --main="main.py"  --enable-plugins="pyside6"  --linux-icon="resource/launcher.ico" \
         --include-raw-dir=tools=tools   --include-raw-dir=Font=Font   --include-raw-dir=resource=resource
 ```

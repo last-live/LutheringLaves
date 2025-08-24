@@ -44,7 +44,7 @@ jobs:
 
       - name: Compress LutheringLavesLauncher.dist
         run: |
-          tar -czf "LutheringLavesLauncher_${{ env.timestamp }}.zip" LutheringLavesLauncher.dist/
+          tar -czf "LutheringLavesLauncher_${{ env.timestamp }}.zip" main.dist/
 
       - name: Upload zip to WebDAV
         uses: XPH0816/webdav-deploy-action@v0.3

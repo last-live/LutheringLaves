@@ -213,3 +213,6 @@ LutheringLavesLauncher.build
 LutheringLavesLauncher.dist
 
 compatdata/*
+
+.DS_Store
+*/.DS_Store

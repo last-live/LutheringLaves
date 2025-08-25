@@ -22,9 +22,12 @@ class DownloadWorker(QThread):
     def __init__(self, launcher:Launcher):
         super().__init__()
         self.launcher = launcher
+        self.launcher.set_progress_callback(self.update_ui_progress)
+
         self._paused = False
         self._resume_event = threading.Event()
-        self._resume_event.set()  # Initially not paused
+        self._resume_event.set()
+
         logger.info("DownloadWorker initialized.")
     
     def pause(self):
@@ -54,8 +57,7 @@ class DownloadWorker(QThread):
     def run(self):
         try:
             logger.info(f"Worker started with state: {self.launcher.state}")
-            self.launcher.set_progress_callback(self.update_ui_progress)
-            
+
             if self.launcher.state == LauncherState.NEEDINSTALL:
                 logger.info("Starting game download...")
                 self.launcher.download_game()
@@ -112,25 +114,30 @@ class MainWindow(QMainWindow):
         layout.addWidget(self.background_label)
         
         # 创建设置按钮
-        self.settings_button = QPushButton("设置")
+        self.settings_button = QPushButton()
         self.settings_button.setFixedSize(60, 55)
         self.settings_button.clicked.connect(self.settings_button_clicked)
-        if hasattr(self, 'custom_font'):
-            self.settings_button.setFont(QFont(self.custom_font, 16, QFont.Bold))
-        # 设置按钮样式：灰色背景，白色字体
         self.settings_button.setStyleSheet("""
             QPushButton {
-                background-color: #e6e6e6;
-                color: black;
+                background-color: rgba(0, 0, 0, 128);
+                border: none;
+                border-radius: 5px;
             }
             QPushButton:hover {
-                background-color: #f1f1f1;
+                background-color: rgba(255, 255, 255, 130);
             }
             QPushButton:pressed {
-                background-color: #e0e0e0;
+                background-color: rgba(255, 255, 255, 160);
             }
         """)
         self.settings_button.setParent(self)
+        self.settings_button.setParent(self)
+        
+        # 设置按钮图标
+        icon_path = os.path.join(os.path.dirname(sys.argv[0]), "resource", "setting.svg")
+        if os.path.exists(icon_path):
+            self.settings_button.setIcon(QIcon(icon_path))
+            self.settings_button.setIconSize(self.settings_button.size() * 0.4)
         
         # 创建按钮和日志显示区域
         self.action_button = QPushButton("下载游戏")
@@ -183,6 +190,7 @@ class MainWindow(QMainWindow):
         if self.launcher.state == LauncherState.NEEDUPDATE:
             self.action_button.setText('更新游戏')
             self.action_button.setEnabled(True)
+
             
     def set_window_icon(self):
         icon_path = os.path.join(os.path.dirname(__file__), "resource", "launcher.ico")
@@ -269,6 +277,7 @@ class MainWindow(QMainWindow):
 
     def action_button_clicked(self):
         logger.info(f"Action button clicked. Current state: {self.launcher.state}")
+
         if self.launcher.state == LauncherState.STARTGAME:
             self.launcher.start_game_process()
             self.launcher.state = LauncherState.GAMERUNNING
@@ -299,29 +308,44 @@ class MainWindow(QMainWindow):
             if hasattr(self.launcher, 'game_process') and self.launcher.game_process:
                 logger.info("Try to kill game process")
                 self.launcher.game_process.kill()
+            return
+        
+        working_state = [LauncherState.DOWNLOADING, LauncherState.UPDATING, LauncherState.VALIDATING]
+        if self.launcher.state in working_state:
+            if self.worker.is_paused():
+                logger.info(f"current state:{self.launcher.state}, resume worker")
+                self.worker.resume()
+                self.action_button.setText("暂停")
+                return
+            logger.info(f"current state:{self.launcher.state}, pause worker")
+            self.worker.pause()
+            self.action_button.setText("继续")
+            return
 
     def download_progress_ui(self, info: ProgressInfo):
-        # logger.info(f"Download progress: {info.finished_size}/{info.total_size}")
-        self.action_button.setEnabled(False)
-        self.action_button.setText("下载中...")
+        if self.worker.is_paused():
+            self.action_button.setText("继续")
+            return
+        self.action_button.setText("暂停")
         self.info_label.setVisible(True)
-        
         finished_size = info.finished_size
         total_size = info.total_size
         self.info_label.setText(f"已下载 {finished_size / 1024 / 1024 / 1024:.1f}GB / {total_size / 1024 / 1024 /1024:.1f}GB")
     
     def verify_progress_ui(self, info: ProgressInfo):
-        # logger.info(f"Verify progress: {info.finished_size}/{info.total_size}")
-        self.action_button.setEnabled(False)
-        self.action_button.setText("校验中...")
+        if self.worker.is_paused():
+            self.action_button.setText("继续")
+            return
         self.info_label.setVisible(True)
         finished_size = info.finished_size
         total_size = info.total_size
         self.info_label.setText(f"已校验 {finished_size / 1024 / 1024 / 1024:.1f}GB / {total_size / 1024 / 1024 /1024:.1f}GB")
         
     def update_progress_ui(self, info: ProgressInfo):
-        self.action_button.setEnabled(False)
-        self.action_button.setText("更新中...")
+        if self.worker.is_paused():
+            self.action_button.setText("继续")
+            return
+        self.action_button.setText("暂停")
         self.info_label.setVisible(True)
         finished_size = info.finished_size
         total_size = info.total_size

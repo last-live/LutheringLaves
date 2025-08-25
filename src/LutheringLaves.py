@@ -218,6 +218,7 @@ class Launcher:
             self.krdiff_file_path.unlink()
     
     def verify_gamefile(self):
+        self.state = LauncherState.VALIDATING
         resource_list = list(self.gamefile_index['resource'])
         for resource in resource_list:
             self.verify_game_progress.total_size += resource['size']

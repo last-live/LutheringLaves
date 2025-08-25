@@ -28,6 +28,7 @@ jobs:
 
       - name: Install dependencies
         run: |
+          nuitka --version
           python -m pip install --upgrade pip
           if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
 
@@ -44,8 +45,7 @@ jobs:
 
       - name: Compress LutheringLavesLauncher.dist
         run: |
-          mv main.dist LutheringLavesLauncher.dist
-          zip -r "LutheringLavesLauncher_${{ env.timestamp }}.zip" LutheringLavesLauncher.dist/
+          tar -czf "LutheringLavesLauncher_${{ env.timestamp }}.zip" LutheringLavesLauncher.dist/
 
       - name: Upload zip to WebDAV
         uses: XPH0816/webdav-deploy-action@v0.3

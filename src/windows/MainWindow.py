@@ -272,7 +272,7 @@ class MainWindow(QMainWindow):
     
     def settings_button_clicked(self):
         logger.info("Settings button clicked")
-        settings_window = SettingsWindow(self)
+        settings_window = SettingsWindow(self, launcher=self.launcher)
         settings_window.exec()
 
     def action_button_clicked(self):

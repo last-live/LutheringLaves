@@ -101,6 +101,7 @@ class Launcher:
         
         self.init_launcher_state()
         self.init_incremental_update()
+        self.init_launcher_settings()
     
     def init_launcher_state(self):
         self.state = LauncherState.STARTGAME
@@ -119,7 +120,31 @@ class Launcher:
                 self.state = LauncherState.NEEDUPDATE
                 logger.info("set launcher state to NEEDUPDATE")
                 return
-        
+    
+    def init_launcher_settings(self):
+        settings_file_path = Path(base_dir) / 'settings.json'
+        if not settings_file_path.exists():
+            default_settings = {
+                "proton_version": "",
+                "proton_path": "",
+                "steamappid": "0",
+                "proton_media_use_gst": "0",
+                "proton_enable_wayland": "0",
+                "proton_no_d3d12": "0",
+                "mangohud": "0"
+            }
+
+            if self.get_latest_proton():
+                default_settings['proton_version'] = self.get_latest_proton()['version']
+                default_settings['proton_path'] = self.get_latest_proton()['proton_path']
+
+            with open(settings_file_path, 'w', encoding='utf-8') as f:
+                json.dump(default_settings, f, ensure_ascii=False, indent=4)
+                
+        with open(settings_file_path, 'r', encoding='utf-8') as f:
+            settings = json.load(f)
+            self.settings = settings
+    
     def get_gamefile_index(self):
         if self.launcher_info is None: return None
         
@@ -220,9 +245,25 @@ class Launcher:
     def verify_gamefile(self):
         self.state = LauncherState.VALIDATING
         resource_list = list(self.gamefile_index['resource'])
+        
+        chunk_paks = []
+        
         for resource in resource_list:
             self.verify_game_progress.total_size += resource['size']
-            
+            if resource['dest'].startswith('Client/Content/Paks/'):
+                chunk_paks.append(resource['dest'].split('/')[-1])
+                
+        print(chunk_paks)
+                
+        # 删除无效的pak文件
+        local_chunk_paks = os.listdir(self.game_folder_path / 'Client' / 'Content' / 'Paks')
+        for chunk_pak in local_chunk_paks:
+            if chunk_pak not in chunk_paks:
+                remove_file = self.game_folder_path / 'Client' / 'Content' / 'Paks' / chunk_pak
+                logger.warning(f'Chunk pak {chunk_pak} will be removed')
+                if remove_file.exists():
+                    remove_file.unlink()
+    
         for file in resource_list:
             file_path = self.game_folder_path.joinpath(Path(file['dest']))
             
@@ -477,24 +518,36 @@ class Launcher:
             game_exe = self.launcher.game_folder_path / "Wuthering Waves.exe"
             self.game_process = subprocess.Popen(f'"{game_exe}"', shell=True)
         if os.name == "posix":
-            # Use Proton to launch the game on Linux
-            AppId = "3658110"
             base_dir = os.path.dirname(sys.argv[0])
+            
             game_exe_path =  Path(base_dir) / "Wuthering Waves Game" / "Wuthering Waves.exe"
-            
             steam_dir_path = Path(os.path.expanduser("~")) / '.steam' / 'steam'
+            proton_path = self.settings.get('proton_path', '')
             
-            proton_path = self.get_latest_proton()
+            steamAppid = self.settings.get('steamappid', '0')
             
-            compatdata_path = Path(base_dir) / "compatdata" / AppId
+            compatdata_path = Path(base_dir) / "compatdata" / steamAppid
             if not compatdata_path.exists():
                 compatdata_path.mkdir(parents=True, exist_ok=True)
             compatdata_path = compatdata_path.resolve()
-
+            
             os.environ["STEAM_COMPAT_DATA_PATH"] = str(compatdata_path)
             os.environ["STEAM_COMPAT_CLIENT_INSTALL_PATH"] = str(steam_dir_path)
-            os.environ["STEAMAPPID"] = "3658110"
+            os.environ["STEAM_PROTON_PATH"] = str(proton_path)
+            
+            if steamAppid != '0':
+                os.environ["STEAMAPPID"] = steamAppid
+            if self.settings.get('proton_media_use_gst', '0') == '1':
+                os.environ["PROTON_MEDIA_USE_GST"] = "1"
+            if self.settings.get('proton_enable_wayland', '0') == '1':
+                os.environ["PROTON_ENABLE_WAYLAND"] = "1"
+            if self.settings.get('proton_no_d3d12', '0') == '1':
+                os.environ["PROTON_NO_D3D12"] = "1"
+            if self.settings.get('mangohud', '0') == '1':
+                os.environ["MANGOHUD"] = "1"
+            
             os.environ["STEAMDECK"] = "1"
+            
             logger.info(f"compatdata_path: {compatdata_path}")
             # steam_launch_command = f"SteamDeck=1 /home/deck/.local/share/Steam/ubuntu12_32/steam-launch-wrapper \
             #     -- /home/deck/.local/share/Steam/ubuntu12_32/reaper \
@@ -525,8 +578,8 @@ class Launcher:
                 if proton_file_path.exists() and version_file_path.exists():
                     with open(version_file_path, 'r') as f:
                         version_content = f.read().strip()
-                        timestamp_str, _ = version_content.split(' ')
-                    proton_version_dict = {'proton_path':proton_file_path, 'timestamp':timestamp_str}
+                        timestamp_str, version = version_content.split(' ')
+                    proton_version_dict = {'proton_path': str(proton_file_path), 'timestamp':timestamp_str, 'version':version}
                     geproton_versions.append(proton_version_dict)
         geproton_versions.sort(key=lambda x: x['timestamp'], reverse=True)
         
@@ -539,8 +592,8 @@ class Launcher:
                 if proton_file_path.exists() and version_file_path.exists():
                     with open(version_file_path, 'r') as f:
                         version_content = f.read().strip()
-                        timestamp_str, _ = version_content.split(' ')
-                    proton_version_dict = {'proton_path':proton_file_path, 'timestamp':timestamp_str}
+                        timestamp_str, version = version_content.split(' ')
+                    proton_version_dict = {'proton_path':str(proton_file_path), 'timestamp':timestamp_str, 'version':version}
                     proton_versions.append(proton_version_dict)
         proton_versions.sort(key=lambda x: x['timestamp'], reverse=True)
         
@@ -554,20 +607,25 @@ class Launcher:
     def get_latest_proton(self):
         geproton_versions, proton_versions = self.find_available_proton()
         if len(geproton_versions) > 0:
-            return geproton_versions[0]['proton_path']
+            return geproton_versions[0]
         if len(proton_versions) > 0:
-            return proton_versions[0]['proton_path']
+            return proton_versions[0]
         return None
+    
+    def update_settings(self):
+        settings_file_path = Path(base_dir) / 'settings.json'
+        with open(settings_file_path, 'w', encoding='utf-8') as f:
+            json.dump(self.settings, f, ensure_ascii=False, indent=4)
 
 if __name__ == '__main__':
     
     parser = argparse.ArgumentParser()
-    parser.add_argument('--mode', default='install',help='install or update or patch-update')
+    parser.add_argument('--mode', default='install2',help='install or update or patch-update')
     parser.add_argument('--folder', default='Wuthering Waves Game',help='set download folder')
     args = parser.parse_args()
     
     launcher = Launcher(game_folder=args.folder)
-
+    launcher.verify_gamefile()
     # download game client file
     if args.mode == 'install':
         launcher.download_game()

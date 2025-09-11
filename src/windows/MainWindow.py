@@ -210,10 +210,13 @@ class MainWindow(QMainWindow):
             print("Font file not found")
         
     def set_background_images(self):
-        # 获取图片路径
-        image1_path = os.path.join(os.path.dirname(sys.argv[0]), "resource", "a51wo90rl10wqlnla0.png")
-        image2_path = os.path.join(os.path.dirname(sys.argv[0]), "resource", "tjxl7pvzuliz4hkx3e.webp")
         
+        background_file_name = self.launcher.background_config["background"]
+        slogan_file_name = self.launcher.background_config["slogan"]
+        # 获取图片路径
+        image1_path = os.path.join(os.path.dirname(sys.argv[0]), "resource", slogan_file_name)
+        image2_path = os.path.join(os.path.dirname(sys.argv[0]), "resource", background_file_name)
+
         if os.path.exists(image1_path) and os.path.exists(image2_path):
             # 加载两张图片
             pixmap1 = QPixmap(image1_path)

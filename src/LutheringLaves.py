@@ -27,6 +27,7 @@ import sys
 base_dir = os.path.dirname(sys.argv[0])
 logger.info(f"base dir: {base_dir}")
 
+WW_LAUNCHER_DOWNLOAD_API = 'https://prod-cn-alicdn-gamestarter.kurogame.com/launcher/launcher/10003_Y8xXrXk65DqFHEDgApn3cpK5lfczpFx5/G152/index.json'
 WW_LAUNCHER_API = 'https://prod-cn-alicdn-gamestarter.kurogame.com/launcher/game/G152/10003_Y8xXrXk65DqFHEDgApn3cpK5lfczpFx5/index.json'
 
 class LauncherState(Enum):
@@ -102,6 +103,7 @@ class Launcher:
         self.init_launcher_state()
         self.init_incremental_update()
         self.init_launcher_settings()
+        self.init_background()
     
     def init_launcher_state(self):
         self.state = LauncherState.STARTGAME
@@ -144,7 +146,34 @@ class Launcher:
         with open(settings_file_path, 'r', encoding='utf-8') as f:
             settings = json.load(f)
             self.settings = settings
-    
+            
+    def init_background(self):
+        background_config = {
+            'background': 'background.webp',
+            'slogan': 'slogan.png'
+        }
+        self.background_config = background_config
+        launcher_download_info = self.get_result(WW_LAUNCHER_DOWNLOAD_API)
+        if launcher_download_info is None: return
+        if launcher_download_info.get('functionCode', None) is None: return
+        
+        function_codes = launcher_download_info['functionCode']['background']
+        background_info_api = f'https://prod-cn-alicdn-gamestarter.kurogame.com/launcher/10003_Y8xXrXk65DqFHEDgApn3cpK5lfczpFx5/G152/background/{function_codes}/zh-Hans.json'
+        background_info = self.get_result(background_info_api)
+        
+        if background_info is None: return
+        
+        background_file_name = background_info['firstFrameImage'].split('/')[-1]
+        slogan_file_name = background_info['slogan'].split('/')[-1]
+
+        bd_download = self.download_file_with_resume(background_info['firstFrameImage'], Path(base_dir) / Path('resource') / Path(background_file_name))
+        sg_download = self.download_file_with_resume(background_info['slogan'], Path(base_dir) / Path('resource') / Path(slogan_file_name))
+        
+        if bd_download and sg_download:
+            self.background_config['background'] = background_file_name
+            self.background_config['slogan'] = slogan_file_name
+        
+        
     def get_gamefile_index(self):
         if self.launcher_info is None: return None
         

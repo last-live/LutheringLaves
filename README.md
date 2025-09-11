@@ -1,7 +1,8 @@
 # LutheringLaves 介绍
 鸣潮第三方启动器，方便在SteamDeck下载鸣潮国服客户端，Linux其他发行版同样适用。目前有UI版和命令行版本，可自行选择。
 
-![](screenshot/Snipaste_2025-08-17_23-58-16.png)
+![](screenshot/Snipaste_2025-09-11_14-18-50.png)
+![](screenshot/Snipaste_2025-09-11_14-19-03.png)
 
 镜像仓库：https://gitee.com/tiz/LutheringLaves
 

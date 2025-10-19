@@ -26,12 +26,12 @@
 #### 初次下载游戏
 1.运行以下命令后，会在当前目录下载'LutheringLaves.py'文件并创建'Wuthering Waves Game'文件夹，游戏文件会保存在'Wuthering Waves Game'文件夹下。
 ``` bash
-curl -sL https://raw.githubusercontent.com/last-live/LutheringLaves/main/LutheringLaves.py -o LutheringLaves.py && python3 LutheringLaves.py
+curl -sL https://raw.githubusercontent.com/last-live/LutheringLaves/main/src/LutheringLaves.py -o LutheringLaves.py && python3 LutheringLaves.py
 ```
 
 国内镜像仓库命令，网络不好用这个
 ``` bash
-curl -sL https://gitee.com/tiz/LutheringLaves/raw/main/LutheringLaves.py -o LutheringLaves.py && python3 LutheringLaves.py
+curl -sL https://gitee.com/tiz/LutheringLaves/raw/main/src/LutheringLaves.py -o LutheringLaves.py && python3 LutheringLaves.py
 ```
 
 2.下载完成后，将游戏客户端文件将"Wuthering Waves.exe"添加到steam库里。
@@ -41,12 +41,12 @@ curl -sL https://gitee.com/tiz/LutheringLaves/raw/main/LutheringLaves.py -o Luth
 #### 更新游戏
 更新游戏时，需要设定工作模式 --mode 为 update，请确保当前目录下有"Wuthering Waves.exe"文件，如需指定其它目录，可以指定参数 --folder
 ``` bash
-curl -sL https://raw.githubusercontent.com/last-live/LutheringLaves/main/LutheringLaves.py -o LutheringLaves.py && python3 LutheringLaves.py --mode update
+curl -sL https://raw.githubusercontent.com/last-live/LutheringLaves/main/src/LutheringLaves.py -o LutheringLaves.py && python3 LutheringLaves.py --mode update
 ```
 
 国内镜像仓库命令，网络不好用这个
 ``` bash
-curl -sL https://gitee.com/tiz/LutheringLaves/raw/main/LutheringLaves.py -o LutheringLaves.py && python3 LutheringLaves.py --mode update
+curl -sL https://gitee.com/tiz/LutheringLaves/raw/main/src/LutheringLaves.py -o LutheringLaves.py && python3 LutheringLaves.py --mode update
 ```
 
 #### 设置下载目录

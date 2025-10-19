@@ -1,4 +1,4 @@
-from PySide6.QtWidgets import QVBoxLayout, QDialog, QComboBox, QWidget, QCheckBox, QGroupBox, QFormLayout, QPushButton
+from PySide6.QtWidgets import QVBoxLayout, QDialog, QComboBox, QWidget, QCheckBox, QGroupBox, QFormLayout, QPushButton, QHBoxLayout
 from PySide6.QtCore import Qt
 from src.LutheringLaves import Launcher, logger
 
@@ -33,6 +33,9 @@ class SettingsWindow(QDialog):
         
         # 添加弹性空间
         layout.addStretch()
+        
+        # 添加底部按钮
+        self.add_bottom_buttons(layout)
     
     def add_combo_group(self, layout):
         # 创建下拉框分组
@@ -117,6 +120,23 @@ class SettingsWindow(QDialog):
         
         layout.addWidget(checkbox_group)
     
+    def add_bottom_buttons(self, layout):
+        # 创建底部按钮布局
+        button_layout = QHBoxLayout()
+        
+        # 添加弹性空间，使按钮靠右对齐
+        button_layout.addStretch()
+        
+        # 创建关闭按钮
+        self.close_button = QPushButton("关闭")
+        self.close_button.clicked.connect(self.accept)
+        self.close_button.setFixedSize(100, 30)
+        
+        # 添加按钮到布局
+        button_layout.addWidget(self.close_button)
+        
+        layout.addLayout(button_layout)
+        
     def add_button(self, layout):
         # 创建按钮容器
         button_widget = QWidget()

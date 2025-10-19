@@ -310,7 +310,8 @@ class MainWindow(QMainWindow):
         if self.launcher.state == LauncherState.GAMERUNNING:
             if hasattr(self.launcher, 'game_process') and self.launcher.game_process:
                 logger.info("Try to kill game process")
-                self.launcher.game_process.kill()
+                self.launcher.stop_game_process()
+                self.action_button.setText("启动游戏")
             return
         
         working_state = [LauncherState.DOWNLOADING, LauncherState.UPDATING, LauncherState.VALIDATING]

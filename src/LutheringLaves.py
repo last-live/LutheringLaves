@@ -556,6 +556,8 @@ class Launcher:
             steamAppid = self.settings.get('steamappid', '0')
             
             compatdata_path = Path(base_dir) / "compatdata" / steamAppid
+            wine_prefix = compatdata_path / "pfx" 
+            
             if not compatdata_path.exists():
                 compatdata_path.mkdir(parents=True, exist_ok=True)
             compatdata_path = compatdata_path.resolve()
@@ -563,6 +565,7 @@ class Launcher:
             os.environ["STEAM_COMPAT_DATA_PATH"] = str(compatdata_path)
             os.environ["STEAM_COMPAT_CLIENT_INSTALL_PATH"] = str(steam_dir_path)
             os.environ["STEAM_PROTON_PATH"] = str(proton_path)
+            os.environ["WINEPREFIX"] = str(wine_prefix)
             
             if steamAppid != '0':
                 os.environ["STEAMAPPID"] = steamAppid
@@ -595,7 +598,16 @@ class Launcher:
                 logger.info(f"Launched game with Proton: {proton_path} run {game_exe_path}")
             except Exception as e:
                 logger.error(f"Failed to launch game with Proton: {e}")
-
+                
+    def stop_game_process(self):
+        if hasattr(self, 'game_process') and self.game_process:
+            logger.info("Stopping game process...")
+            os.system("kill -9 $(pgrep -f 'Wuthering Waves')")
+            self.game_process.terminate()
+            self.game_process.wait()
+            logger.info("Game process stopped.")
+            self.state = LauncherState.STARTGAME
+            
     def find_available_proton(self):
         # Find all available Proton versions
         geproton_versions = []

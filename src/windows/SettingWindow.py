@@ -1,12 +1,12 @@
-from PySide6.QtWidgets import QVBoxLayout, QDialog, QComboBox, QWidget, QCheckBox, QGroupBox, QFormLayout, QPushButton, QHBoxLayout
+from PySide6.QtWidgets import QVBoxLayout, QDialog, QComboBox, QWidget, QCheckBox, QGroupBox, QFormLayout, QPushButton, QHBoxLayout, QLabel, QMessageBox
 from PySide6.QtCore import Qt
-from src.LutheringLaves import Launcher, logger
+from src.LutheringLaves import Launcher, logger, QUALITY_LEVELS, QUALITY_NAMES
 
 class SettingsWindow(QDialog):
     def __init__(self, parent=None, launcher: Launcher = None):
         super().__init__(parent)
         self.setWindowTitle("设置")
-        self.setFixedSize(600, 400)
+        self.setFixedSize(600, 520)
         
         self.launcher = launcher
         
@@ -68,6 +68,114 @@ class SettingsWindow(QDialog):
         
         layout.addWidget(combo_group)
         
+        # 添加资源档位分组
+        self.add_quality_group(layout)
+        
+    def add_quality_group(self, layout):
+        # 资源档位
+        quality_group = QGroupBox("资源档位")
+        quality_layout = QFormLayout()
+        quality_group.setLayout(quality_layout)
+        self.quality_status = self.launcher.get_quality_status()
+        self.quality_combo = QComboBox()
+        self.populate_quality_combo()
+        self.quality_combo.currentIndexChanged.connect(self.on_quality_changed)
+        quality_layout.addRow("下载画质：", self.quality_combo)
+        self.quality_tip_label = QLabel()
+        self.quality_tip_label.setWordWrap(True)
+        quality_layout.addRow("", self.quality_tip_label)
+        self.release_button = QPushButton("释放其它档位资源")
+        self.release_button.setFixedSize(160, 28)
+        self.release_button.clicked.connect(self.on_release_quality_clicked)
+        quality_layout.addRow("", self.release_button)
+        layout.addWidget(quality_group)
+        self.refresh_quality_group()
+    
+    def populate_quality_combo(self):
+        self.quality_combo.blockSignals(True)
+        self.quality_combo.clear()
+        current_quality = self.launcher.get_download_quality()
+        current_index = 0
+        if self.quality_status:
+            for i, item in enumerate(self.quality_status):
+                size_text = f"{item['size'] / 1024 ** 3:.1f} GiB" if item['size'] else "大小未知"
+                state_text = "已下载" if item['downloaded'] else "未下载"
+                self.quality_combo.addItem(f"{item['name']}（{size_text}，{state_text}）", item['key'])
+                if item['key'] == current_quality:
+                    current_index = i
+        else:
+            for i, quality in enumerate(QUALITY_LEVELS):
+                self.quality_combo.addItem(QUALITY_NAMES.get(quality, quality), quality)
+                if quality == current_quality:
+                    current_index = i
+        self.quality_combo.setCurrentIndex(current_index)
+        self.quality_combo.blockSignals(False)
+    
+    def refresh_quality_group(self):
+        quality = self.launcher.get_download_quality()
+        status = self.quality_status
+        if not status:
+            self.quality_tip_label.setText("无法获取官方资源包信息（网络异常），档位资源将在下载/更新时按官方索引获取。")
+            self.release_button.setEnabled(False)
+            return
+        active = next((item for item in status if item['key'] == quality), None)
+        others = [item for item in status if item['key'] != quality and item['downloaded']]
+        if active and active['downloaded']:
+            self.quality_tip_label.setText(f"当前使用：{active['name']}，资源已就绪。")
+        elif active:
+            size_text = f"（约 {active['size'] / 1024 ** 3:.1f} GiB）" if active['size'] else ""
+            self.quality_tip_label.setText(
+                f"当前选择的 {active['name']} 资源尚未下载{size_text}，"
+                f"请回到主界面点击「更新游戏」下载；已下载的档位也可直接切换使用。"
+            )
+        else:
+            self.quality_tip_label.setText("档位资源将在下载/更新时按官方索引获取。")
+        if others:
+            names = "、".join(item['name'] for item in others)
+            self.release_button.setEnabled(True)
+            self.release_button.setToolTip(f"删除已下载的其它档位资源（{names}）以释放磁盘空间")
+        else:
+            self.release_button.setEnabled(False)
+            self.release_button.setToolTip("没有已下载的其它档位资源")
+    
+    def on_quality_changed(self, index):
+        quality = self.quality_combo.currentData()
+        if not quality:
+            return
+        logger.info(f"下载画质变更为: {quality}")
+        self.launcher.settings['download_quality'] = quality
+        self.launcher.update_settings()
+        self.refresh_quality_group()
+    
+    def on_release_quality_clicked(self):
+        quality = self.launcher.get_download_quality()
+        status = self.launcher.get_quality_status() or []
+        others = [item for item in status if item['key'] != quality and item['downloaded']]
+        if not others:
+            QMessageBox.information(self, "释放空间", "没有已下载的其它档位资源。")
+            return
+        detail = "\n".join(
+            f"· {item['name']}（{item['size'] / 1024 ** 3:.1f} GiB）" if item['size'] else f"· {item['name']}"
+            for item in others
+        )
+        answer = QMessageBox.question(
+            self, "释放空间",
+            f"将删除以下已下载档位资源以释放磁盘空间：\n{detail}\n\n删除后如需再次使用这些档位，需要重新下载。是否继续？",
+            QMessageBox.Yes | QMessageBox.No, QMessageBox.No
+        )
+        if answer != QMessageBox.Yes:
+            return
+        try:
+            deleted, freed = self.launcher.release_quality_packs([item['key'] for item in others])
+        except Exception as e:
+            QMessageBox.warning(self, "释放空间", f"释放失败：{e}")
+            return
+        logger.info(f"已释放 {deleted} 个文件，约 {freed / 1024 ** 3:.1f} GiB")
+        QMessageBox.information(self, "释放空间", f"已删除 {deleted} 个文件，释放约 {freed / 1024 ** 3:.1f} GiB 空间。")
+        self.quality_status = self.launcher.get_quality_status()
+        self.populate_quality_combo()
+        self.refresh_quality_group()
+    
     def add_checkbox_group(self, layout):
         # 创建复选框分组
         checkbox_group = QGroupBox("启动参数")
